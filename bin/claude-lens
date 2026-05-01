@@ -123,7 +123,7 @@ case "${1:-}" in
   open)    cmd_open ;;
   listen)  cmd_listen "$@" ;;
   *)
-    echo "usage: claude-lens {start|stop|restart|status|open|listen [--inject] [--focus APP]}"
+    echo "usage: claude-lens {start|stop|restart|status|open|listen [--dry-run] [--focus APP]}"
     exit 2
     ;;
 esac

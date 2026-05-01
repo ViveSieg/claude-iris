@@ -489,6 +489,46 @@ function reconnectWs() {
 
 // ---------- input ----------
 
+// Paste-to-upload: when the user pastes an image into the input field,
+// upload it and append its server-side path into the input box (so the
+// next Send carries the path, which Claude Code can Read directly).
+els.inputField.addEventListener("paste", async (e) => {
+  const items = (e.clipboardData || {}).items || [];
+  let imageItem = null;
+  for (const it of items) {
+    if (it.type && it.type.startsWith("image/")) {
+      imageItem = it;
+      break;
+    }
+  }
+  if (!imageItem) return; // let the default paste handle text
+  e.preventDefault();
+  const blob = imageItem.getAsFile();
+  if (!blob) return;
+  const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
+  const fd = new FormData();
+  fd.append("file", blob, `paste.${ext}`);
+  fd.append("session_id", currentSession);
+  els.inputField.placeholder = "uploading image…";
+  try {
+    const r = await fetch("/upload-image", { method: "POST", body: fd });
+    const data = await r.json();
+    if (data.ok && data.path) {
+      const tag = `[image: ${data.path}]`;
+      const cur = els.inputField.value;
+      els.inputField.value = cur ? cur + " " + tag : tag;
+      els.inputField.placeholder = "Type a message back to the terminal…";
+      els.inputField.focus();
+    } else {
+      alert("upload failed: " + (data.error || "unknown error"));
+    }
+  } catch (err) {
+    alert("upload failed: " + err.message);
+  } finally {
+    els.inputField.placeholder = "Type a message back to the terminal…";
+  }
+});
+
 els.inputForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = els.inputField.value.trim();

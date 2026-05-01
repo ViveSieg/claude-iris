@@ -17,7 +17,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import base64
+import secrets
+import time as _t
+
+from fastapi import FastAPI, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -28,7 +32,12 @@ DATA_DIR = Path(os.environ.get("CLAUDE_LENS_DATA", Path.home() / ".claude-lens")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 SESSION_DIR = DATA_DIR / "sessions"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = DATA_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PIPE_PATH = DATA_DIR / "input.pipe"
+
+ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 app = FastAPI(title="claude-lens")
 
@@ -212,6 +221,41 @@ async def rename_session(session_id: str, payload: dict[str, Any]) -> dict[str, 
     await hub.broadcast(safe, {"type": "label_changed", "label": label})
     await hub.broadcast("__index__", {"type": "session_touch", "session": safe})
     return {"ok": True, "label": label}
+
+
+@app.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    session_id: str = Form("default"),
+) -> dict[str, Any]:
+    """Receive a pasted/dropped image, save to disk, return its path."""
+    name = file.filename or "image.png"
+    ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ".png"
+    if ext not in ALLOWED_IMAGE_EXT:
+        ext = ".png"
+    safe_session = "".join(c for c in session_id if c.isalnum() or c in "-_") or "default"
+    stamp = _t.strftime("%Y%m%d-%H%M%S")
+    rand = secrets.token_hex(3)
+    out = UPLOAD_DIR / f"{safe_session}-{stamp}-{rand}{ext}"
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        return JSONResponse({"ok": False, "error": "file too large"}, status_code=413)
+    out.write_bytes(data)
+    return {
+        "ok": True,
+        "path": str(out),
+        "size": len(data),
+        "filename": out.name,
+    }
+
+
+@app.get("/uploads/{name}")
+async def get_upload(name: str) -> Any:
+    safe = "".join(c for c in name if c.isalnum() or c in "-_.")
+    p = UPLOAD_DIR / safe
+    if not p.exists() or not p.is_file():
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    return FileResponse(p)
 
 
 @app.post("/session")

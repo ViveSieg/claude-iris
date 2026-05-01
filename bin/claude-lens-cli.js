@@ -116,8 +116,9 @@ Usage:
   claude-lens restart                 Bounce the mirror server.
   claude-lens status                  Is the mirror server running?
   claude-lens open                    Open the mirror tab in Chrome.
-  claude-lens listen [--inject]       Watch the input pipe; with --inject, type
-                                       browser messages into the front terminal.
+  claude-lens listen [--dry-run]      Watch the input pipe and type browser
+                                       messages into the front terminal.
+                                       --dry-run disables injection (log only).
 
 Inside Claude Code (after setup):
   /lens on       /lens off       /lens open       /lens status       /lens restart

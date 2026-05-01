@@ -105,9 +105,10 @@ def banner(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="claude-lens listen")
     parser.add_argument(
-        "--inject",
-        action="store_true",
-        help="actually type the messages into the front window (default: dry-run)",
+        "--dry-run",
+        dest="inject",
+        action="store_false",
+        help="log lines but do NOT inject keystrokes (default is to inject)",
     )
     parser.add_argument(
         "--focus",
@@ -115,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         help="macOS only: name of the app to activate before each keystroke "
         "(e.g. 'Terminal', 'iTerm2'). Default: don't activate, type into current focus.",
     )
+    parser.set_defaults(inject=True)
     args = parser.parse_args(argv)
 
     ensure_pipe()
