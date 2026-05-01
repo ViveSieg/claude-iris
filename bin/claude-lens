@@ -106,14 +106,24 @@ cmd_open() {
   fi
 }
 
+cmd_listen() {
+  if [ ! -x "${PY}" ]; then
+    echo "venv missing — run ${REPO}/install.sh first" >&2
+    exit 1
+  fi
+  shift  # drop the "listen" arg, pass the rest to listen.py
+  exec "${PY}" "${REPO}/bin/listen.py" "$@"
+}
+
 case "${1:-}" in
   start)   cmd_start ;;
   stop)    cmd_stop ;;
   restart) cmd_stop; cmd_start ;;
   status)  cmd_status ;;
   open)    cmd_open ;;
+  listen)  cmd_listen "$@" ;;
   *)
-    echo "usage: claude-lens {start|stop|restart|status|open}"
+    echo "usage: claude-lens {start|stop|restart|status|open|listen [--inject] [--focus APP]}"
     exit 2
     ;;
 esac

@@ -116,6 +116,8 @@ Usage:
   claude-lens restart                 Bounce the mirror server.
   claude-lens status                  Is the mirror server running?
   claude-lens open                    Open the mirror tab in Chrome.
+  claude-lens listen [--inject]       Watch the input pipe; with --inject, type
+                                       browser messages into the front terminal.
 
 Inside Claude Code (after setup):
   /lens on       /lens off       /lens open       /lens status       /lens restart
@@ -158,13 +160,13 @@ if (sub === "setup" || sub === "install") {
   die("install.sh failed (exit code " + r.status + ")");
 }
 
-if (["start", "stop", "restart", "status", "open"].includes(sub)) {
+if (["start", "stop", "restart", "status", "open", "listen"].includes(sub)) {
   if (!fs.existsSync(BASH_BIN)) {
     die(
       `${BASH_BIN} not found.\nDid you run \`claude-lens setup\` first?`
     );
   }
-  run("bash", [BASH_BIN, sub]);
+  run("bash", [BASH_BIN, sub, ...args.slice(1)]);
 }
 
 console.error(`Unknown subcommand: ${sub}\n`);
