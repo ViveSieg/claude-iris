@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# claude-lens cli — start/stop the local mirror server.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+VENV="${REPO}/server/.venv"
+PY="${VENV}/bin/python"
+DATA_DIR="${CLAUDE_LENS_DATA:-${HOME}/.claude-lens}"
+PID_FILE="${DATA_DIR}/server.pid"
+LOG_FILE="${DATA_DIR}/server.log"
+PORT="${CLAUDE_LENS_PORT:-7456}"
+HOST="${CLAUDE_LENS_HOST:-127.0.0.1}"
+
+mkdir -p "${DATA_DIR}"
+
+cmd_start() {
+  if cmd_status_quiet; then
+    echo "claude-lens already running (pid $(cat "${PID_FILE}")) on http://${HOST}:${PORT}"
+    return 0
+  fi
+  if [ ! -x "${PY}" ]; then
+    echo "venv missing — run ${REPO}/install.sh first" >&2
+    exit 1
+  fi
+  echo "starting claude-lens on http://${HOST}:${PORT} ..."
+  CLAUDE_LENS_HOST="${HOST}" \
+  CLAUDE_LENS_PORT="${PORT}" \
+  CLAUDE_LENS_DATA="${DATA_DIR}" \
+    nohup "${PY}" "${REPO}/server/main.py" >>"${LOG_FILE}" 2>&1 &
+  echo $! > "${PID_FILE}"
+  sleep 0.6
+  if cmd_status_quiet; then
+    echo "ok — http://${HOST}:${PORT}"
+  else
+    echo "failed to start — see ${LOG_FILE}" >&2
+    exit 1
+  fi
+}
+
+cmd_stop() {
+  if [ -f "${PID_FILE}" ]; then
+    local pid
+    pid="$(cat "${PID_FILE}")"
+    if kill -0 "${pid}" 2>/dev/null; then
+      kill "${pid}" 2>/dev/null || true
+      sleep 0.2
+      kill -9 "${pid}" 2>/dev/null || true
+      echo "stopped (pid ${pid})"
+    else
+      echo "no live process for pid ${pid}"
+    fi
+    rm -f "${PID_FILE}"
+  else
+    echo "not running"
+  fi
+}
+
+cmd_status_quiet() {
+  [ -f "${PID_FILE}" ] || return 1
+  local pid
+  pid="$(cat "${PID_FILE}")"
+  kill -0 "${pid}" 2>/dev/null
+}
+
+cmd_status() {
+  if cmd_status_quiet; then
+    echo "running (pid $(cat "${PID_FILE}")) — http://${HOST}:${PORT}"
+  else
+    echo "not running"
+    return 1
+  fi
+}
+
+cmd_open() {
+  if ! cmd_status_quiet; then
+    cmd_start
+  fi
+  local url="http://${HOST}:${PORT}"
+  local opened=0
+  case "$(uname -s)" in
+    Darwin)
+      # Prefer Google Chrome, then Chromium / Brave / Edge as fallbacks, finally default.
+      for app in "Google Chrome" "Chromium" "Brave Browser" "Microsoft Edge"; do
+        if [ -d "/Applications/${app}.app" ] || [ -d "${HOME}/Applications/${app}.app" ]; then
+          open -a "${app}" "${url}" && opened=1 && break
+        fi
+      done
+      [ "${opened}" -eq 0 ] && open "${url}" && opened=1
+      ;;
+    Linux)
+      for bin in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+        if command -v "${bin}" >/dev/null 2>&1; then
+          "${bin}" "${url}" >/dev/null 2>&1 &
+          opened=1
+          break
+        fi
+      done
+      [ "${opened}" -eq 0 ] && command -v xdg-open >/dev/null 2>&1 && xdg-open "${url}" && opened=1
+      ;;
+    *)
+      command -v xdg-open >/dev/null 2>&1 && xdg-open "${url}" && opened=1
+      ;;
+  esac
+  if [ "${opened}" -eq 0 ]; then
+    echo "open ${url} in your browser"
+  fi
+}
+
+case "${1:-}" in
+  start)   cmd_start ;;
+  stop)    cmd_stop ;;
+  restart) cmd_stop; cmd_start ;;
+  status)  cmd_status ;;
+  open)    cmd_open ;;
+  *)
+    echo "usage: claude-lens {start|stop|restart|status|open}"
+    exit 2
+    ;;
+esac
