@@ -1,4 +1,6 @@
-<h1 align="center">claude-lens</h1>
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:cc785c,100:e8a55a&height=200&section=header&text=claude-lens&fontSize=72&fontColor=faf9f5&animation=fadeIn&fontAlignY=40" alt="claude-lens" />
+</p>
 
 <p align="center">
   <i>See Claude clearly · 让 Claude 看得清楚</i><br>
@@ -8,12 +10,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ViveSieg/claude-lens/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ViveSieg/claude-lens?style=social"></a>
-  <a href="https://www.npmjs.com/package/claude-lens"><img alt="npm" src="https://img.shields.io/npm/v/claude-lens?logo=npm"></a>
-  <a href="https://github.com/ViveSieg/claude-lens/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue">
-  <img alt="Node 18+" src="https://img.shields.io/badge/node-18%2B-green">
-  <img alt="macOS · Linux" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-lightgrey">
+  <a href="https://github.com/ViveSieg/claude-lens/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/ViveSieg/claude-lens?style=for-the-badge&logo=github&color=cc785c&labelColor=141413"></a>
+  <a href="https://www.npmjs.com/package/claude-lens"><img alt="npm version" src="https://img.shields.io/npm/v/claude-lens?style=for-the-badge&logo=npm&color=cb3837&labelColor=141413"></a>
+  <a href="https://www.npmjs.com/package/claude-lens"><img alt="npm downloads" src="https://img.shields.io/npm/dm/claude-lens?style=for-the-badge&logo=npm&color=e8a55a&labelColor=141413&label=downloads"></a>
+  <a href="https://github.com/ViveSieg/claude-lens/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-5db8a6?style=for-the-badge&labelColor=141413"></a>
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=for-the-badge&logo=python&logoColor=white&labelColor=141413">
+  <img alt="Node" src="https://img.shields.io/badge/node-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white&labelColor=141413">
+  <img alt="macOS · Linux" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-faf9f5?style=for-the-badge&labelColor=141413">
 </p>
 
 <p align="center">
@@ -450,6 +456,24 @@ Issues and PRs welcome. Two principles to keep in mind if you touch core code:
 - NotebookLM access via [`notebooklm-client`](https://github.com/icebear0828/notebooklm-client).
 - Rendering: [marked](https://marked.js.org/) · [KaTeX](https://katex.org/) · [Mermaid](https://mermaid.js.org/) · [highlight.js](https://highlightjs.org/).
 
+## Activity
+
+<p align="center">
+  <a href="https://star-history.com/#ViveSieg/claude-lens&Date">
+    <img src="https://api.star-history.com/svg?repos=ViveSieg/claude-lens&type=Date" alt="Star history" width="640">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/ViveSieg/claude-lens">
+    <img src="https://github-readme-stats.vercel.app/api/pin/?username=ViveSieg&repo=claude-lens&theme=transparent&border_color=e6dfd8&title_color=cc785c&icon_color=cc785c&text_color=3d3d3a" alt="claude-lens repo stats">
+  </a>
+</p>
+
 ## License
 
 [MIT](LICENSE).
+
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:cc785c,100:e8a55a&height=120&section=footer" alt="" />
+</p>
