@@ -43,6 +43,8 @@ class PushPayload(BaseModel):
 
 class InputPayload(BaseModel):
     text: str
+    session_id: str = "default"
+    session_label: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -158,20 +160,62 @@ async def push(payload: PushPayload) -> dict[str, Any]:
 
 @app.post("/input")
 async def push_input(payload: InputPayload) -> dict[str, Any]:
+    # 1. Persist as a user message in the session and broadcast it.
+    msg = {
+        "session_id": payload.session_id,
+        "session_label": payload.session_label,
+        "role": "user",
+        "content": payload.text,
+        "ts": time.time(),
+    }
+    append_session(payload.session_id, msg)
+    await hub.broadcast(payload.session_id, {"type": "message", "message": msg})
+    await hub.broadcast("__index__", {"type": "session_touch", "session": payload.session_id})
+
+    # 2. Best-effort write to the named pipe for any terminal consumer.
+    pipe_status: str | None = None
     if not PIPE_PATH.exists():
         try:
             os.mkfifo(PIPE_PATH)
         except FileExistsError:
             pass
         except OSError as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-    try:
-        fd = os.open(PIPE_PATH, os.O_WRONLY | os.O_NONBLOCK)
-        os.write(fd, (payload.text + "\n").encode("utf-8"))
-        os.close(fd)
-        return {"ok": True}
-    except OSError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
+            pipe_status = f"mkfifo failed: {e}"
+    if pipe_status is None:
+        try:
+            fd = os.open(PIPE_PATH, os.O_WRONLY | os.O_NONBLOCK)
+            os.write(fd, (payload.text + "\n").encode("utf-8"))
+            os.close(fd)
+            pipe_status = "delivered"
+        except OSError:
+            # Pipe has no reader — that's fine, the message is already persisted.
+            pipe_status = "no consumer"
+    return {"ok": True, "pipe": pipe_status}
+
+
+@app.post("/session")
+async def create_session(payload: dict[str, Any]) -> dict[str, Any]:
+    """Create an empty session file so it shows up in the sidebar before any push."""
+    session_id = str(payload.get("session_id") or "").strip()
+    label = payload.get("session_label") or session_id
+    if not session_id:
+        return JSONResponse({"ok": False, "error": "session_id required"}, status_code=400)
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_")
+    if not safe:
+        return JSONResponse({"ok": False, "error": "invalid session_id"}, status_code=400)
+    path = session_file(safe)
+    if not path.exists():
+        # Seed the file so list_sessions() picks it up; record the label too.
+        seed = {
+            "session_id": safe,
+            "session_label": label,
+            "role": "system",
+            "content": f"_session created at {time.strftime('%Y-%m-%d %H:%M:%S')}_",
+            "ts": time.time(),
+        }
+        with path.open("w", encoding="utf-8") as f:
+            f.write(json.dumps(seed, ensure_ascii=False) + "\n")
+    return {"ok": True, "session_id": safe, "label": label}
 
 
 @app.get("/sessions")

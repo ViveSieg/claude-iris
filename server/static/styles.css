@@ -131,17 +131,40 @@ html, body {
   gap: 4px;
 }
 
-.session-item {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 12px;
+.session-add {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--canvas);
+  color: var(--primary);
+  border: 1px dashed var(--primary);
+  padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-style 0.12s ease;
+  text-align: left;
+  margin-bottom: 6px;
+}
+
+.session-add:hover {
+  background: var(--primary);
+  color: var(--on-dark);
+  border-style: solid;
+}
+
+.session-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 0;
+  border-radius: 8px;
   background: transparent;
   border: 1px solid transparent;
   transition: background 0.12s ease, border-color 0.12s ease;
   font-size: 14px;
   color: var(--body);
+  position: relative;
+  overflow: hidden;
 }
 
 .session-item:hover {
@@ -156,6 +179,15 @@ html, body {
   box-shadow: 0 1px 2px rgba(20,20,19,0.04);
 }
 
+.session-item-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px 10px 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+
 .session-item-label {
   font-weight: 500;
   white-space: nowrap;
@@ -168,6 +200,32 @@ html, body {
   color: var(--muted-soft);
   font-family: var(--mono);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-del {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--muted-soft);
+  font-size: 18px;
+  line-height: 1;
+  width: 28px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.session-item:hover .session-del,
+.session-item.active .session-del {
+  opacity: 1;
+}
+
+.session-del:hover {
+  background: var(--error);
+  color: white;
 }
 
 .toc {

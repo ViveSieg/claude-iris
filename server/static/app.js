@@ -49,12 +49,12 @@ mermaid.initialize({
 });
 
 function renderMarkdown(container, src) {
-  // Pre-extract mermaid blocks
+  // Pre-extract mermaid blocks so marked doesn't mangle them.
   const mermaidBlocks = [];
   const protectedSrc = src.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
     const id = mermaidBlocks.length;
     mermaidBlocks.push(code.trim());
-    return `<div class="mermaid-placeholder" data-id="${id}"></div>`;
+    return `<div class="mermaid-slot" data-mid="${id}"></div>`;
   });
 
   container.innerHTML = marked.parse(protectedSrc);
@@ -74,18 +74,29 @@ function renderMarkdown(container, src) {
     });
   }
 
-  // Mermaid
-  container.querySelectorAll(".mermaid-placeholder").forEach((el, i) => {
-    const code = mermaidBlocks[parseInt(el.dataset.id, 10)];
-    const div = document.createElement("div");
-    div.className = "mermaid";
-    div.textContent = code;
-    el.replaceWith(div);
+  // Mermaid — use mermaid.render() (more reliable than mermaid.run() on dynamic DOM).
+  container.querySelectorAll(".mermaid-slot").forEach((slot) => {
+    const idx = parseInt(slot.dataset.mid, 10);
+    const code = mermaidBlocks[idx];
+    const renderId = "m-" + Math.random().toString(36).slice(2, 10);
+    mermaid
+      .render(renderId, code)
+      .then(({ svg, bindFunctions }) => {
+        slot.innerHTML = svg;
+        slot.classList.add("mermaid");
+        if (bindFunctions) bindFunctions(slot);
+      })
+      .catch((err) => {
+        const safe = code.replace(/[<>]/g, (c) => (c === "<" ? "&lt;" : "&gt;"));
+        const errMsg = err && err.message ? err.message : "render failed";
+        slot.innerHTML =
+          '<pre style="background:#fdf3f0;border-left:3px solid #c64545;padding:12px 14px;border-radius:6px;color:#c64545;overflow:auto;font-family:JetBrains Mono,ui-monospace,monospace;font-size:13px"><code>Mermaid: ' +
+          errMsg +
+          "\n\n" +
+          safe +
+          "</code></pre>";
+      });
   });
-  const mermaidEls = container.querySelectorAll(".mermaid");
-  if (mermaidEls.length > 0) {
-    mermaid.run({ nodes: mermaidEls }).catch(() => {});
-  }
 }
 
 // ---------- session list ----------
@@ -102,6 +113,14 @@ async function loadSessions() {
 
 function renderSessionList(sessions) {
   els.sessionList.innerHTML = "";
+
+  // "+ New session" button always at top
+  const addBtn = document.createElement("button");
+  addBtn.className = "session-add";
+  addBtn.textContent = "＋ New session";
+  addBtn.onclick = createSession;
+  els.sessionList.appendChild(addBtn);
+
   if (sessions.length === 0) {
     const empty = document.createElement("div");
     empty.className = "session-item";
@@ -114,19 +133,74 @@ function renderSessionList(sessions) {
   for (const s of sessions) {
     const item = document.createElement("div");
     item.className = "session-item" + (s.id === currentSession ? " active" : "");
-    item.onclick = () => switchSession(s.id);
+
+    const main = document.createElement("div");
+    main.className = "session-item-main";
+    main.onclick = () => switchSession(s.id);
 
     const label = document.createElement("div");
     label.className = "session-item-label";
     label.textContent = s.label || s.id;
-    item.appendChild(label);
+    main.appendChild(label);
 
     const idEl = document.createElement("div");
     idEl.className = "session-item-id";
     idEl.textContent = s.id.slice(0, 16) + (s.id.length > 16 ? "…" : "");
-    item.appendChild(idEl);
+    main.appendChild(idEl);
+
+    item.appendChild(main);
+
+    const del = document.createElement("button");
+    del.className = "session-del";
+    del.title = "Delete this session";
+    del.textContent = "×";
+    del.onclick = (e) => {
+      e.stopPropagation();
+      deleteSession(s.id);
+    };
+    item.appendChild(del);
 
     els.sessionList.appendChild(item);
+  }
+}
+
+async function createSession() {
+  const name = prompt("Session name (letters, digits, dash, underscore):", "");
+  if (!name) return;
+  const safe = name.trim().replace(/[^A-Za-z0-9_-]/g, "-");
+  if (!safe) {
+    alert("Invalid session name.");
+    return;
+  }
+  try {
+    const r = await fetch("/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: safe, session_label: name.trim() }),
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      alert("Could not create session: " + (data.error || "unknown error"));
+      return;
+    }
+    await loadSessions();
+    switchSession(data.session_id);
+  } catch (e) {
+    console.warn("createSession failed", e);
+  }
+}
+
+async function deleteSession(id) {
+  if (!confirm(`Delete session "${id}"? This removes its history file.`)) return;
+  try {
+    await fetch(`/session/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await loadSessions();
+    if (id === currentSession) {
+      // Fall back to default if we deleted the active session.
+      switchSession("default");
+    }
+  } catch (e) {
+    console.warn("deleteSession failed", e);
   }
 }
 
@@ -362,13 +436,17 @@ els.inputForm.addEventListener("submit", async (e) => {
   const text = els.inputField.value.trim();
   if (!text) return;
   els.inputField.value = "";
-  // optimistic local echo
-  appendMessage({ role: "user", content: text, ts: Date.now() / 1000 }, true);
+  // Server now persists + broadcasts via WebSocket, so we don't echo locally
+  // (otherwise the message would appear twice).
   try {
     const r = await fetch("/input", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({
+        text,
+        session_id: currentSession,
+        session_label: els.feedTitle.textContent || currentSession,
+      }),
     });
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
