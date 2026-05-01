@@ -29,10 +29,35 @@ def read_event() -> dict:
         return {}
 
 
-def last_assistant_text(transcript: Path) -> str | None:
+def _extract_text_blocks(rec: dict) -> str:
+    """Pull all `type: text` blocks out of an assistant record, joined."""
+    msg = rec.get("message", rec)
+    content = msg.get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    chunks: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            chunks.append(block.get("text", ""))
+    return "".join(chunks).strip()
+
+
+def latest_turn_assistant_text(transcript: Path) -> str | None:
+    """Concatenate every assistant text block from the most recent turn.
+
+    A "turn" = everything since the last user message. When Claude calls
+    tools mid-reply (e.g. `/notecraft chat`), Claude Code splits the
+    assistant output into multiple records separated by tool_use /
+    tool_result entries. Taking only the final record drops the opening
+    explanation, the tool results, and the analysis — the user sees a
+    suspiciously short last paragraph. We keep them all and join with
+    blank-line separators.
+    """
     if not transcript.exists():
         return None
-    last_text: str | None = None
+    current_turn: list[str] = []
     with transcript.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -42,27 +67,17 @@ def last_assistant_text(transcript: Path) -> str | None:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            # Records vary: {"type":"assistant","message":{"content":[...]}} or
-            # {"role":"assistant","content":[...]}
             role = rec.get("type") or rec.get("role")
-            if role != "assistant":
-                continue
-            msg = rec.get("message", rec)
-            content = msg.get("content")
-            if isinstance(content, str):
-                last_text = content
-                continue
-            if not isinstance(content, list):
-                continue
-            chunks: list[str] = []
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                if block.get("type") == "text":
-                    chunks.append(block.get("text", ""))
-            if chunks:
-                last_text = "".join(chunks).strip()
-    return last_text
+            if role == "user":
+                # New user turn → drop everything we'd buffered for the prior turn.
+                current_turn = []
+            elif role == "assistant":
+                text = _extract_text_blocks(rec)
+                if text:
+                    current_turn.append(text)
+    if not current_turn:
+        return None
+    return "\n\n".join(current_turn).strip() or None
 
 
 def last_custom_title(transcript: Path) -> str | None:
@@ -110,7 +125,7 @@ def main() -> int:
         return 0
 
     transcript = Path(transcript_path)
-    text = last_assistant_text(transcript)
+    text = latest_turn_assistant_text(transcript)
     if not text:
         return 0
 
