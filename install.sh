@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install claude-lens: venv + symlinks + slash commands + notebooklm doctor.
+# Install claude-iris: venv + symlinks + slash commands + notebooklm doctor.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
@@ -8,7 +8,7 @@ VENV_DIR="${REPO}/server/.venv"
 COMMANDS_DIR="${HOME_CLAUDE}/commands"
 PLUGINS_DIR="${HOME_CLAUDE}/plugins"
 
-echo ">>> claude-lens installer"
+echo ">>> claude-iris installer"
 echo "    repo: ${REPO}"
 
 # 1. python venv + deps
@@ -38,7 +38,7 @@ fi
 mkdir -p "${COMMANDS_DIR}" "${PLUGINS_DIR}"
 
 # 3. symlink plugin dir for discovery
-PLUGIN_LINK="${PLUGINS_DIR}/claude-lens"
+PLUGIN_LINK="${PLUGINS_DIR}/claude-iris"
 if [ -L "${PLUGIN_LINK}" ] || [ -e "${PLUGIN_LINK}" ]; then
   rm -rf "${PLUGIN_LINK}"
 fi
@@ -46,13 +46,13 @@ ln -s "${REPO}" "${PLUGIN_LINK}"
 echo ">>> plugin symlinked: ${PLUGIN_LINK}"
 
 # 4. install slash commands
-cp "${REPO}/commands/lens.md" "${COMMANDS_DIR}/lens.md"
+cp "${REPO}/commands/iris.md" "${COMMANDS_DIR}/iris.md"
 cp "${REPO}/commands/tutor.md" "${COMMANDS_DIR}/tutor.md"
-echo ">>> /lens and /tutor commands installed at ${COMMANDS_DIR}/"
+echo ">>> /iris and /tutor commands installed at ${COMMANDS_DIR}/"
 
 # 5. make scripts executable
-chmod +x "${REPO}/hooks/stop_lens.py"
-chmod +x "${REPO}/bin/claude-lens" 2>/dev/null || true
+chmod +x "${REPO}/hooks/stop_iris.py"
+chmod +x "${REPO}/bin/claude-iris" 2>/dev/null || true
 
 # 6. NotebookLM doctor (optional — skip if --no-notebook)
 if [[ "${1:-}" != "--no-notebook" ]]; then
@@ -88,7 +88,7 @@ echo ""
 echo ">>> done."
 echo ""
 echo "Next steps in any Claude Code session:"
-echo "  /lens on            # start mirror server + Stop hook + Chrome tab"
+echo "  /iris on            # start mirror server + Stop hook + Chrome tab"
 echo "  /tutor init         # walk through NotebookLM setup + pick a role"
-echo "  /lens off           # tear down"
+echo "  /iris off           # tear down"
 echo ""

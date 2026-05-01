@@ -1,4 +1,4 @@
-"""claude-lens server.
+"""claude-iris server.
 
 POST /push          assistant reply from Stop hook → store + broadcast.
 POST /input         browser → user message + named pipe.
@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-DATA_DIR = Path(os.environ.get("CLAUDE_LENS_DATA", Path.home() / ".claude-lens"))
+DATA_DIR = Path(os.environ.get("CLAUDE_IRIS_DATA", Path.home() / ".claude-iris"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 SESSION_DIR = DATA_DIR / "sessions"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,7 @@ PIPE_PATH = DATA_DIR / "input.pipe"
 
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
-UPLOAD_TTL_DAYS = float(os.environ.get("CLAUDE_LENS_UPLOAD_TTL_DAYS", "7"))
+UPLOAD_TTL_DAYS = float(os.environ.get("CLAUDE_IRIS_UPLOAD_TTL_DAYS", "7"))
 
 
 def _cleanup_uploads(ttl_days: float) -> None:
@@ -72,7 +72,7 @@ def _kill_orphan_listeners() -> None:
     """
     try:
         result = subprocess.run(
-            ["pgrep", "-f", "claude-lens.*bin/listen.py"],
+            ["pgrep", "-f", "claude-iris.*bin/listen.py"],
             capture_output=True,
             text=True,
             timeout=2,
@@ -94,7 +94,7 @@ def _kill_orphan_listeners() -> None:
 
 _kill_orphan_listeners()
 
-app = FastAPI(title="claude-lens")
+app = FastAPI(title="claude-iris")
 
 
 class PushPayload(BaseModel):
@@ -146,7 +146,7 @@ hub = Hub()
 
 LISTENER_SCRIPT = ROOT.parent / "bin" / "listen.py"
 LISTENER_LOG = DATA_DIR / "listen.log"
-LISTENER_GRACE_SEC = float(os.environ.get("CLAUDE_LENS_LISTEN_GRACE", "30"))
+LISTENER_GRACE_SEC = float(os.environ.get("CLAUDE_IRIS_LISTEN_GRACE", "30"))
 
 
 # TERM_PROGRAM is set by the terminal emulator on macOS. Map it to the .app
@@ -170,7 +170,7 @@ def _detect_focus_app() -> str | None:
 
     Override > auto-detect from TERM_PROGRAM. Empty string disables activation.
     """
-    override = os.environ.get("CLAUDE_LENS_FOCUS")
+    override = os.environ.get("CLAUDE_IRIS_FOCUS")
     if override is not None:
         return override.strip() or None
     tp = os.environ.get("TERM_PROGRAM", "")
@@ -203,7 +203,7 @@ class ListenerManager:
             )
             log.flush()
             env = os.environ.copy()
-            env["CLAUDE_LENS_DATA"] = str(DATA_DIR)
+            env["CLAUDE_IRIS_DATA"] = str(DATA_DIR)
             # Use the server's own python so the listener inherits the venv
             # (incl. PyObjC/Quartz on macOS, which we use for background paste).
             cmd = [sys.executable, str(LISTENER_SCRIPT)]
@@ -251,7 +251,7 @@ def session_file(session_id: str) -> Path:
 
 # Path where Claude Code stores its own per-session JSONL transcripts. We
 # read these (read-only) to recover the user's `/rename` custom title even
-# when our own session file has been cleared — so the lens sidebar/title
+# when our own session file has been cleared — so the iris sidebar/title
 # always reflects the conversation name without waiting for the next Stop
 # hook to push it down.
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
@@ -349,7 +349,7 @@ def list_sessions() -> list[dict[str, Any]]:
 
 def _resolve_label(session_id: str, fallback: str | None) -> str | None:
     """Always prefer the live `/rename` title from Claude Code's transcript
-    over what the client sent. Avoids the bug where Clear-ing the lens feed
+    over what the client sent. Avoids the bug where Clear-ing the iris feed
     loses the label and new messages show the raw UUID until the next push.
     """
     title = custom_title_from_transcript(session_id)
@@ -529,8 +529,8 @@ async def health() -> dict[str, Any]:
 def main() -> None:
     import uvicorn
 
-    host = os.environ.get("CLAUDE_LENS_HOST", "127.0.0.1")
-    port = int(os.environ.get("CLAUDE_LENS_PORT", "7456"))
+    host = os.environ.get("CLAUDE_IRIS_HOST", "127.0.0.1")
+    port = int(os.environ.get("CLAUDE_IRIS_PORT", "7456"))
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 

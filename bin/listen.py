@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""claude-lens listen — type browser input into the front terminal.
+"""claude-iris listen — type browser input into the front terminal.
 
-Reads lines from ~/.claude-lens/input.pipe and sends keystrokes + Return
+Reads lines from ~/.claude-iris/input.pipe and sends keystrokes + Return
 to the OS-frontmost window via osascript (macOS) or xdotool (Linux).
 The mirror server spawns this on first WebSocket connect and tears it
 down after grace when the last browser tab closes.
@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("CLAUDE_LENS_DATA", Path.home() / ".claude-lens"))
+DATA_DIR = Path(os.environ.get("CLAUDE_IRIS_DATA", Path.home() / ".claude-iris"))
 PIPE = DATA_DIR / "input.pipe"
 SYSTEM = platform.system()
 
@@ -38,7 +38,7 @@ def _quartz_paste_to_pid(pid: int) -> bool:
 
     Returns True on success. Quartz CGEventPostToPid lets us deliver key
     events to a target process even when it isn't the frontmost — so the
-    terminal pastes the clipboard in the background and the lens browser
+    terminal pastes the clipboard in the background and the iris browser
     keeps focus (no flash, no jump).
     """
     try:
@@ -156,7 +156,7 @@ def inject(text: str, *, focus_app: str | None) -> None:
 
 def banner(args: argparse.Namespace) -> None:
     print()
-    print("claude-lens listen")
+    print("claude-iris listen")
     print(f"  pipe:        {PIPE}")
     print(f"  platform:    {SYSTEM}")
     print(f"  inject:      {'on' if args.inject else 'off (dry-run, log only)'}")
@@ -180,7 +180,7 @@ def banner(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="claude-lens listen")
+    parser = argparse.ArgumentParser(prog="claude-iris listen")
     parser.add_argument(
         "--dry-run",
         dest="inject",

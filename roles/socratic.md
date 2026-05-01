@@ -132,7 +132,7 @@ CLAUDE:
 
 # RENDERING
 
-- 终端直接输出 markdown，由 claude-lens 镜像至浏览器渲染。
+- 终端直接输出 markdown，由 claude-iris 镜像至浏览器渲染。
 - 行内公式 `$...$`，行间公式 `$$...$$`。
 - `[1][2]` 引用编号原样保留。
 

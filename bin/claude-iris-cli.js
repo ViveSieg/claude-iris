@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* claude-lens npm entry — delegates to install.sh (setup) or bin/claude-lens (runtime). */
+/* claude-iris npm entry — delegates to install.sh (setup) or bin/claude-iris (runtime). */
 
 "use strict";
 
@@ -8,7 +8,7 @@ const path = require("path");
 const fs = require("fs");
 
 const PKG_ROOT = path.resolve(__dirname, "..");
-const BASH_BIN = path.join(PKG_ROOT, "bin", "claude-lens");
+const BASH_BIN = path.join(PKG_ROOT, "bin", "claude-iris");
 const INSTALL_SH = path.join(PKG_ROOT, "install.sh");
 
 const RESET = "\x1b[0m";
@@ -37,7 +37,7 @@ const BANNER = String.raw`
 
 function banner() {
   if (process.env.NO_COLOR || !process.stdout.isTTY) {
-    console.log("\n  claude-lens\n");
+    console.log("\n  claude-iris\n");
     return;
   }
   const lines = BANNER.split("\n");
@@ -51,7 +51,7 @@ function banner() {
     DIM + "  See Claude clearly · 让 Claude 看得清楚" + RESET
   );
   console.log(
-    DIM + "  https://github.com/ViveSieg/claude-lens" + RESET
+    DIM + "  https://github.com/ViveSieg/claude-iris" + RESET
   );
   console.log("");
 }
@@ -95,7 +95,7 @@ function die(msg, code = 1) {
 
 function ensureBash() {
   if (process.platform === "win32") {
-    die("claude-lens currently requires macOS or Linux (or WSL on Windows).");
+    die("claude-iris currently requires macOS or Linux (or WSL on Windows).");
   }
 }
 
@@ -106,22 +106,22 @@ function run(cmd, args, opts = {}) {
 
 function usage() {
   console.log(
-    `claude-lens — render Claude Code replies in a browser
+    `claude-iris — render Claude Code replies in a browser
 
 Usage:
-  claude-lens setup [--no-notebook]   First-time install: venv, plugin symlink,
+  claude-iris setup [--no-notebook]   First-time install: venv, plugin symlink,
                                        slash commands, NotebookLM doctor.
-  claude-lens start                   Start the mirror server.
-  claude-lens stop                    Stop the mirror server.
-  claude-lens restart                 Bounce the mirror server.
-  claude-lens status                  Is the mirror server running?
-  claude-lens open                    Open the mirror tab in Chrome.
-  claude-lens listen [--dry-run]      Watch the input pipe and type browser
+  claude-iris start                   Start the mirror server.
+  claude-iris stop                    Stop the mirror server.
+  claude-iris restart                 Bounce the mirror server.
+  claude-iris status                  Is the mirror server running?
+  claude-iris open                    Open the mirror tab in Chrome.
+  claude-iris listen [--dry-run]      Watch the input pipe and type browser
                                        messages into the front terminal.
                                        --dry-run disables injection (log only).
 
 Inside Claude Code (after setup):
-  /lens on       /lens off       /lens open       /lens status       /lens restart
+  /iris on       /iris off       /iris open       /iris status       /iris restart
   /tutor init    /tutor doctor   /tutor notebook  /tutor role       /tutor ask "..."
 `
   );
@@ -151,10 +151,10 @@ if (sub === "setup" || sub === "install") {
     box("setup complete", [
       "Next steps in any Claude Code session:",
       "",
-      "  " + CORAL + "/lens on" + RESET + "        start mirror, register Stop hook, open Chrome",
+      "  " + CORAL + "/iris on" + RESET + "        start mirror, register Stop hook, open Chrome",
       "  " + CORAL + "/tutor init" + RESET + "     bind a NotebookLM notebook + scaffold CLAUDE.md",
       "",
-      DIM + "Docs: https://github.com/ViveSieg/claude-lens" + RESET,
+      DIM + "Docs: https://github.com/ViveSieg/claude-iris" + RESET,
     ]);
     process.exit(0);
   }
@@ -164,7 +164,7 @@ if (sub === "setup" || sub === "install") {
 if (["start", "stop", "restart", "status", "open", "listen"].includes(sub)) {
   if (!fs.existsSync(BASH_BIN)) {
     die(
-      `${BASH_BIN} not found.\nDid you run \`claude-lens setup\` first?`
+      `${BASH_BIN} not found.\nDid you run \`claude-iris setup\` first?`
     );
   }
   run("bash", [BASH_BIN, sub, ...args.slice(1)]);

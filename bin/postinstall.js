@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/* claude-lens npm postinstall — runs install.sh quietly so the slash
-   commands work right after `npm i -g @vivesieg/claude-lens`. Failure here MUST
+/* claude-iris npm postinstall — runs install.sh quietly so the slash
+   commands work right after `npm i -g claude-iris`. Failure here MUST
    never break the install — we just print a friendly hint.
 */
 
@@ -10,14 +10,14 @@ const { spawnSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-if (process.env.CLAUDE_LENS_SKIP_POSTINSTALL === "1") {
+if (process.env.CLAUDE_IRIS_SKIP_POSTINSTALL === "1") {
   process.exit(0);
 }
 
 if (process.platform === "win32") {
   console.log(
-    "[claude-lens] Windows is not directly supported — use WSL and run\n" +
-      "             `claude-lens setup` from inside the WSL shell."
+    "[claude-iris] Windows is not directly supported — use WSL and run\n" +
+      "             `claude-iris setup` from inside the WSL shell."
   );
   process.exit(0);
 }
@@ -27,8 +27,8 @@ const INSTALL_SH = path.join(PKG_ROOT, "install.sh");
 
 if (!fs.existsSync(INSTALL_SH)) {
   console.log(
-    "[claude-lens] install.sh missing — skipping post-install setup.\n" +
-      "             Run `claude-lens setup` manually if needed."
+    "[claude-iris] install.sh missing — skipping post-install setup.\n" +
+      "             Run `claude-iris setup` manually if needed."
   );
   process.exit(0);
 }
@@ -41,13 +41,13 @@ const tty = process.stdout.isTTY;
 const c = (col, s) => (tty ? col + s + RESET : s);
 
 console.log("");
-console.log(c(CORAL, "  claude-lens · post-install"));
+console.log(c(CORAL, "  claude-iris · post-install"));
 console.log(c(DIM, "  Setting up venv + plugin symlink + slash commands..."));
 console.log("");
 
 // `--no-notebook` skips the interactive NotebookLM toolchain check so we
 // never block the install. Users who want the notebook layer run
-// `claude-lens setup` later or invoke `/tutor init` from Claude Code.
+// `claude-iris setup` later or invoke `/tutor init` from Claude Code.
 const r = spawnSync("bash", [INSTALL_SH, "--no-notebook"], {
   cwd: PKG_ROOT,
   stdio: tty ? "inherit" : "pipe",
@@ -58,8 +58,8 @@ if (r.status === 0) {
   console.log(c(TEAL, "  ✓ ready"));
   console.log("");
   console.log(c(DIM, "  next:"));
-  console.log("    " + c(CORAL, "claude-lens open") + "    " + c(DIM, "# start mirror + open Chrome + spawn listener"));
-  console.log("    " + c(CORAL, "/lens on") + "          " + c(DIM, "# (in any Claude Code session) same thing"));
+  console.log("    " + c(CORAL, "claude-iris open") + "    " + c(DIM, "# start mirror + open Chrome + spawn listener"));
+  console.log("    " + c(CORAL, "/iris on") + "          " + c(DIM, "# (in any Claude Code session) same thing"));
   console.log("    " + c(CORAL, "/tutor init") + "       " + c(DIM, "# (optional) wire a NotebookLM notebook in"));
   console.log("");
 } else {

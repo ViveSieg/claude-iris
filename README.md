@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.svg" width="120" alt="claude-lens logo" />
+  <img src="assets/logo.svg" width="120" alt="claude-iris logo" />
 </p>
 
-<h1 align="center">claude-lens</h1>
+<h1 align="center">claude-iris</h1>
 
 <p align="center">
   <i>See Claude clearly.</i><br>
@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ViveSieg/claude-lens/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/ViveSieg/claude-lens?style=for-the-badge&logo=github&color=cc785c&labelColor=141413"></a>
-  <a href="https://www.npmjs.com/package/claude-lens"><img alt="npm version" src="https://img.shields.io/npm/v/claude-lens?style=for-the-badge&logo=npm&color=cb3837&labelColor=141413"></a>
-  <a href="https://www.npmjs.com/package/claude-lens"><img alt="npm downloads" src="https://img.shields.io/npm/dm/claude-lens?style=for-the-badge&logo=npm&color=e8a55a&labelColor=141413&label=downloads"></a>
-  <a href="https://github.com/ViveSieg/claude-lens/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-5db8a6?style=for-the-badge&labelColor=141413"></a>
+  <a href="https://github.com/ViveSieg/claude-iris/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/ViveSieg/claude-iris?style=for-the-badge&logo=github&color=cc785c&labelColor=141413"></a>
+  <a href="https://www.npmjs.com/package/claude-iris"><img alt="npm version" src="https://img.shields.io/npm/v/claude-iris?style=for-the-badge&logo=npm&color=cb3837&labelColor=141413"></a>
+  <a href="https://www.npmjs.com/package/claude-iris"><img alt="npm downloads" src="https://img.shields.io/npm/dm/claude-iris?style=for-the-badge&logo=npm&color=e8a55a&labelColor=141413&label=downloads"></a>
+  <a href="https://github.com/ViveSieg/claude-iris/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-5db8a6?style=for-the-badge&labelColor=141413"></a>
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 
 The terminal squashes everything into monospace text. Math turns into
 garbled characters, tables get cut off, diagrams stay as source code.
-**claude-lens** mirrors every reply you get from Claude Code into a Chrome
+**claude-iris** mirrors every reply you get from Claude Code into a Chrome
 tab where it actually looks the way it was written.
 
 You keep typing in your terminal. The browser is a beautiful read-only
@@ -49,11 +49,11 @@ window — same conversation, two views.
 ## Install — one command
 
 ```bash
-npm install -g @vivesieg/claude-lens
+npm install -g claude-iris
 ```
 
 That's it. The package auto-runs its own setup so the slash commands work
-inside Claude Code immediately. No `claude-lens setup` needed.
+inside Claude Code immediately. No `claude-iris setup` needed.
 
 You'll need: macOS or Linux, Python 3.10+, Node 18+, and Claude Code.
 
@@ -88,10 +88,10 @@ shows the one-liner to retry.
 > Settings → Privacy & Security → Automation** → expand your terminal app
 > → enable `System Events`.
 >
-> **3. Restart** that terminal app fully (Cmd+Q, reopen), then `/lens restart`.
+> **3. Restart** that terminal app fully (Cmd+Q, reopen), then `/iris restart`.
 > macOS only re-reads permissions when the process starts.
 >
-> Sanity check: `~/.claude-lens/listen.log` should be quiet. If it shows
+> Sanity check: `~/.claude-iris/listen.log` should be quiet. If it shows
 > `not allowed assistive access` / `osascript 不允许发送按键 (1002)`,
 > Accessibility isn't on yet. If it shows `Not authorized to send Apple
 > events to System Events`, Automation isn't on yet.
@@ -106,12 +106,12 @@ shows the one-liner to retry.
 Inside any Claude Code session, type:
 
 ```
-/lens on
+/iris on
 ```
 
 This starts the local mirror server, opens a Chrome tab pointed at it,
 and registers a hook so every future reply auto-renders in the tab.
-Stop with `/lens off`.
+Stop with `/iris off`.
 
 ### What you can do in the browser tab
 
@@ -125,11 +125,11 @@ Stop with `/lens off`.
 
 | Command | What it does |
 |---|---|
-| `/lens on` | Start mirror server, hook, browser. |
-| `/lens off` | Stop everything. |
-| `/lens open` | Re-open the browser tab. |
-| `/lens status` | Is the server running? |
-| `/lens restart` | Restart the server. |
+| `/iris on` | Start mirror server, hook, browser. |
+| `/iris off` | Stop everything. |
+| `/iris open` | Re-open the browser tab. |
+| `/iris status` | Is the server running? |
+| `/iris restart` | Restart the server. |
 
 ---
 
@@ -202,7 +202,7 @@ queries the notebook first via `notebooklm-client` (the integration is
 called from inside the role's prompt), then repackages the answer in the
 chosen format. No further commands needed.
 
-If you also run `/lens on`, replies stream into your browser tab with
+If you also run `/iris on`, replies stream into your browser tab with
 proper LaTeX, Mermaid diagrams, and code highlighting — useful for
 courses with formulas (the `exam-reviewer` role assumes this).
 
@@ -232,7 +232,7 @@ browser tab. If the server isn't running, the hook quietly does nothing —
 your terminal is never blocked.
 
 **Browser → terminal pipeline (macOS):**
-1. You type in the lens input bar; press Send.
+1. You type in the iris input bar; press Send.
 2. Server writes the text to a FIFO; listener reads it.
 3. Listener calls `pbcopy` (handles full Unicode incl. CJK reliably — keystroke injection drops/sticks on non-ASCII).
 4. Listener resolves the terminal app's pid via `NSWorkspace`, posts Cmd+V + Return to that pid via `CGEventPostToPid`. **No app activation, no focus flash.**
@@ -242,8 +242,8 @@ If PyObjC isn't installed (rare — it's a requirements.txt dep), the listener
 falls back to AppleScript activate-paste-restore, which works but visibly
 flashes the terminal forward and back.
 
-**Pasted images:** dropping/pasting an image into the lens input uploads it
-to `~/.claude-lens/uploads/<session>-<stamp>-<rand>.<ext>`. The input shows a
+**Pasted images:** dropping/pasting an image into the iris input uploads it
+to `~/.claude-iris/uploads/<session>-<stamp>-<rand>.<ext>`. The input shows a
 short `[imageN]` alias; on Send it expands to `[image: /full/path]` so the
 terminal-side Claude can `Read` the file. The browser feed renders the
 token as a 280×220 thumbnail. Old uploads are auto-pruned (default 7 days).
@@ -254,31 +254,31 @@ token as a 280×220 thumbnail. Old uploads are auto-pruned (default 7 days).
 
 | Variable | Default | What it controls |
 |---|---|---|
-| `CLAUDE_LENS_HOST` | `127.0.0.1` | Bind address. |
-| `CLAUDE_LENS_PORT` | `7456` | Port. |
-| `CLAUDE_LENS_DATA` | `~/.claude-lens` | Where session files live. |
-| `CLAUDE_LENS_LISTEN_GRACE` | `30` | Seconds to wait after browser closes before stopping the typing-listener. |
-| `CLAUDE_LENS_FOCUS` | *(auto)* | macOS: name of the terminal app to paste into (e.g. `Ghostty`, `Terminal`, `iTerm`). Auto-detected from `$TERM_PROGRAM` when the server starts; set this to override. |
-| `CLAUDE_LENS_UPLOAD_TTL_DAYS` | `7` | macOS/Linux: delete pasted-image files older than N days at server startup. `0` disables cleanup. |
+| `CLAUDE_IRIS_HOST` | `127.0.0.1` | Bind address. |
+| `CLAUDE_IRIS_PORT` | `7456` | Port. |
+| `CLAUDE_IRIS_DATA` | `~/.claude-iris` | Where session files live. |
+| `CLAUDE_IRIS_LISTEN_GRACE` | `30` | Seconds to wait after browser closes before stopping the typing-listener. |
+| `CLAUDE_IRIS_FOCUS` | *(auto)* | macOS: name of the terminal app to paste into (e.g. `Ghostty`, `Terminal`, `iTerm`). Auto-detected from `$TERM_PROGRAM` when the server starts; set this to override. |
+| `CLAUDE_IRIS_UPLOAD_TTL_DAYS` | `7` | macOS/Linux: delete pasted-image files older than N days at server startup. `0` disables cleanup. |
 
 ---
 
 ## Troubleshooting
 
 **Browser shows "disconnected — retrying…"**
-The mirror server isn't running. Run `/lens on` again, or `claude-lens start`.
+The mirror server isn't running. Run `/iris on` again, or `claude-iris start`.
 
 **Browser typing doesn't reach my terminal (macOS)**
 The keystroke injector uses `osascript` and needs **Accessibility**
 permission for whichever terminal runs `claude`. See
 [macOS one-time setup](#install--one-command) above.
-You can confirm this is the cause by checking `~/.claude-lens/listen.log`
+You can confirm this is the cause by checking `~/.claude-iris/listen.log`
 for `not allowed assistive access` / `osascript 不允许发送按键 (1002)`.
-After granting, restart the terminal and run `/lens restart`.
+After granting, restart the terminal and run `/iris restart`.
 
 **Replies stop appearing in the browser**
 The Stop hook may have been removed from `~/.claude/settings.json`. Run
-`/lens on` to put it back.
+`/iris on` to put it back.
 
 **`/tutor init` says NotebookLM tools are missing**
 `npm i -g notebooklm-client`, then `npx notebooklm export-session` to log
@@ -308,8 +308,8 @@ Issues and PRs welcome. Two non-negotiables:
 ## Star history
 
 <p align="center">
-  <a href="https://star-history.com/#ViveSieg/claude-lens&Date">
-    <img src="https://api.star-history.com/svg?repos=ViveSieg/claude-lens&type=Date" alt="Star history" width="640">
+  <a href="https://star-history.com/#ViveSieg/claude-iris&Date">
+    <img src="https://api.star-history.com/svg?repos=ViveSieg/claude-iris&type=Date" alt="Star history" width="640">
   </a>
 </p>
 

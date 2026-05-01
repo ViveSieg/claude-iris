@@ -1,9 +1,9 @@
 ---
-description: NotebookLM tutor wizard — install notebooklm-client, pick a notebook as the read-only knowledge base, pick a role for Claude, scaffold CLAUDE.md, and start the lens.
+description: NotebookLM tutor wizard — install notebooklm-client, pick a notebook as the read-only knowledge base, pick a role for Claude, scaffold CLAUDE.md, and start the iris mirror.
 argument-hint: init | notebook | role | doctor | ask
 ---
 
-You are running the **claude-lens tutor wizard**. In this workflow:
+You are running the **claude-iris tutor wizard**. In this workflow:
 
 - **NotebookLM** is a **read-only knowledge base** (not a teacher) — fixed, never written back to.
 - **Claude (you)** is the intelligent agent that does **二次加工 (secondary processing)** of NotebookLM content — explaining, structuring, drilling, quizzing — but **never invents domain facts** outside what the knowledge base provides.
@@ -79,7 +79,7 @@ only repackages.
 Read the chosen template file at:
 
 ```
-~/.claude/plugins/claude-lens/roles/<role-id>.md
+~/.claude/plugins/claude-iris/roles/<role-id>.md
 ```
 
 Substitute these placeholders:
@@ -92,7 +92,7 @@ already exists, **show a diff and ask** before overwriting. Then `cp CLAUDE.md A
 so both surfaces stay in sync (Claude Code reads CLAUDE.md, OpenAI's Codex reads
 AGENTS.md — same content).
 
-Also write `.claude-lens.json` in the cwd with the chosen settings:
+Also write `.claude-iris.json` in the cwd with the chosen settings:
 ```json
 {
   "notebook_id": "...",
@@ -102,16 +102,16 @@ Also write `.claude-lens.json` in the cwd with the chosen settings:
 }
 ```
 
-## Step 5 — Start the lens
+## Step 5 — Start the iris
 
 Run:
 ```bash
-~/.claude/plugins/claude-lens/bin/claude-lens start
-~/.claude/plugins/claude-lens/bin/claude-lens open
+~/.claude/plugins/claude-iris/bin/claude-iris start
+~/.claude/plugins/claude-iris/bin/claude-iris open
 ```
 
 Also ensure the Stop hook is registered in `~/.claude/settings.json` (same merge logic
-as `/lens on`). Check first; only modify if missing.
+as `/iris on`). Check first; only modify if missing.
 
 ## Step 6 — Smoke test
 
@@ -130,32 +130,32 @@ Tell the user: "Setup complete. Ask anything; the role and notebook are wired in
 
 # `notebook` (switch notebook in current project)
 
-Re-run **Step 2** only. Read existing `.claude-lens.json`, list notebooks, let the user
-pick a new one, update both `.claude-lens.json` and the `notebook id:` line in
+Re-run **Step 2** only. Read existing `.claude-iris.json`, list notebooks, let the user
+pick a new one, update both `.claude-iris.json` and the `notebook id:` line in
 `./CLAUDE.md` and `./AGENTS.md`. Don't touch the role.
 
 # `role` (switch role in current project)
 
-Re-run **Step 3 + Step 4**. Keep the existing notebook id/title from `.claude-lens.json`.
+Re-run **Step 3 + Step 4**. Keep the existing notebook id/title from `.claude-iris.json`.
 
 # `doctor` (health check, no changes)
 
 Run the doctor checks from Step 1, plus:
-- Is the lens server running? `~/.claude/plugins/claude-lens/bin/claude-lens status`
+- Is the iris server running? `~/.claude/plugins/claude-iris/bin/claude-iris status`
 - Is the Stop hook registered in `~/.claude/settings.json`?
 - Does `./CLAUDE.md` exist and contain a notebook id?
-- Does `./.claude-lens.json` exist?
+- Does `./.claude-iris.json` exist?
 
 Report a summary table. Don't fix anything; just diagnose.
 
 # `ask <question>`
 
-Read the notebook id from `./.claude-lens.json` (or `./CLAUDE.md`). Run:
+Read the notebook id from `./.claude-iris.json` (or `./CLAUDE.md`). Run:
 ```bash
 npx notebooklm chat <id> --transport auto --question "<the user's question>"
 ```
 Then format the response per the current role's output skeleton (read role from
-`.claude-lens.json`).
+`.claude-iris.json`).
 
 ---
 

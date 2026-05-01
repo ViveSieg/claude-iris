@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code Stop hook — push the last assistant turn to claude-lens.
+"""Claude Code Stop hook — push the last assistant turn to claude-iris.
 
 Reads the hook-event JSON from stdin, locates the transcript file, extracts
 the most recent assistant message's text content, and POSTs it to the
@@ -15,8 +15,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ENDPOINT = os.environ.get("CLAUDE_LENS_ENDPOINT", "http://127.0.0.1:7456/push")
-TIMEOUT = float(os.environ.get("CLAUDE_LENS_TIMEOUT", "1.5"))
+ENDPOINT = os.environ.get("CLAUDE_IRIS_ENDPOINT", "http://127.0.0.1:7456/push")
+TIMEOUT = float(os.environ.get("CLAUDE_IRIS_TIMEOUT", "1.5"))
 
 
 def read_event() -> dict:

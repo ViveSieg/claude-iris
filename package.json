@@ -1,12 +1,12 @@
 {
-  "name": "@vivesieg/claude-lens",
+  "name": "claude-iris",
   "version": "0.3.0",
   "publishConfig": {
     "access": "public"
   },
   "description": "Render Claude Code's terminal replies in a browser tab — markdown, KaTeX, Mermaid, syntax highlighting. Optional NotebookLM tutor wizard with role templates.",
   "bin": {
-    "claude-lens": "bin/claude-lens-cli.js"
+    "claude-iris": "bin/claude-iris-cli.js"
   },
   "files": [
     "bin/",
@@ -41,10 +41,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ViveSieg/claude-lens.git"
+    "url": "git+https://github.com/ViveSieg/claude-iris.git"
   },
-  "homepage": "https://github.com/ViveSieg/claude-lens",
+  "homepage": "https://github.com/ViveSieg/claude-iris",
   "bugs": {
-    "url": "https://github.com/ViveSieg/claude-lens/issues"
+    "url": "https://github.com/ViveSieg/claude-iris/issues"
   }
 }

@@ -1,9 +1,9 @@
 ---
-description: Toggle the claude-lens browser preview (live-render assistant replies in Chrome with KaTeX/Mermaid).
+description: Toggle the claude-iris browser preview (live-render assistant replies in Chrome with KaTeX/Mermaid).
 argument-hint: on | off | open | status | restart
 ---
 
-You are managing the **claude-lens** plugin — a local FastAPI service that mirrors each
+You are managing the **claude-iris** plugin — a local FastAPI service that mirrors each
 assistant reply into a browser tab where it renders as proper markdown with LaTeX (KaTeX)
 and Mermaid diagrams. The user invokes this slash command from Claude Code.
 
@@ -17,15 +17,15 @@ Run these steps **in order** with the Bash tool:
 
 1. **Start the server** (idempotent — won't double-start):
    ```bash
-   ~/.claude/plugins/claude-lens/bin/claude-lens start
+   ~/.claude/plugins/claude-iris/bin/claude-iris start
    ```
 
 2. **Register the Stop hook in user settings.json** so future replies auto-mirror.
    Read `~/.claude/settings.json`. If a Stop hook entry pointing to
-   `~/.claude/plugins/claude-lens/hooks/stop_lens.py` already exists, skip.
+   `~/.claude/plugins/claude-iris/hooks/stop_iris.py` already exists, skip.
    Otherwise, merge a Stop hook that runs:
    ```
-   ~/.claude/plugins/claude-lens/hooks/stop_lens.py
+   ~/.claude/plugins/claude-iris/hooks/stop_iris.py
    ```
    The Claude Code Stop hook spec:
    ```json
@@ -36,7 +36,7 @@ Run these steps **in order** with the Bash tool:
            "hooks": [
              {
                "type": "command",
-               "command": "~/.claude/plugins/claude-lens/hooks/stop_lens.py"
+               "command": "~/.claude/plugins/claude-iris/hooks/stop_iris.py"
              }
            ]
          }
@@ -49,7 +49,7 @@ Run these steps **in order** with the Bash tool:
 
 3. **Open the browser**:
    ```bash
-   ~/.claude/plugins/claude-lens/bin/claude-lens open
+   ~/.claude/plugins/claude-iris/bin/claude-iris open
    ```
 
 4. Tell the user: server URL (`http://127.0.0.1:7456`), that the Stop hook is active,
@@ -58,30 +58,30 @@ Run these steps **in order** with the Bash tool:
 ## `off`
 
 1. **Remove the Stop hook** from `~/.claude/settings.json` — only entries whose `command`
-   contains `stop_lens.py`. Preserve all other hooks.
+   contains `stop_iris.py`. Preserve all other hooks.
 2. **Stop the server**:
    ```bash
-   ~/.claude/plugins/claude-lens/bin/claude-lens stop
+   ~/.claude/plugins/claude-iris/bin/claude-iris stop
    ```
 3. Tell the user the mirror is fully off.
 
 ## `open`
 
 ```bash
-~/.claude/plugins/claude-lens/bin/claude-lens open
+~/.claude/plugins/claude-iris/bin/claude-iris open
 ```
 
 ## `status`
 
 ```bash
-~/.claude/plugins/claude-lens/bin/claude-lens status
+~/.claude/plugins/claude-iris/bin/claude-iris status
 ```
 Also report whether the Stop hook is currently registered in `~/.claude/settings.json`.
 
 ## `restart`
 
 ```bash
-~/.claude/plugins/claude-lens/bin/claude-lens restart
+~/.claude/plugins/claude-iris/bin/claude-iris restart
 ```
 
 # Important

@@ -1,4 +1,4 @@
-/* claude-lens frontend */
+/* claude-iris frontend */
 
 const params = new URLSearchParams(location.search);
 let currentSession = params.get("session") || "default";

@@ -92,7 +92,7 @@ CLAUDE:
 
 # RENDERING
 
-- 终端 markdown，浏览器由 claude-lens 渲染。
+- 终端 markdown，浏览器由 claude-iris 渲染。
 - `[1][2]` 引用原样保留。
 - 行内 `$...$`、行间 `$$...$$`。公式仅当资料原文含公式时出现，**禁止自创**。
 
