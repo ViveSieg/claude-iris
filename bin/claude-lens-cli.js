@@ -11,8 +11,85 @@ const PKG_ROOT = path.resolve(__dirname, "..");
 const BASH_BIN = path.join(PKG_ROOT, "bin", "claude-lens");
 const INSTALL_SH = path.join(PKG_ROOT, "install.sh");
 
+const RESET = "\x1b[0m";
+const DIM = "\x1b[2m";
+const BOLD = "\x1b[1m";
+const CORAL = "\x1b[38;2;204;120;92m";
+const AMBER = "\x1b[38;2;232;165;90m";
+const TEAL = "\x1b[38;2;93;184;166m";
+
+function gradientLine(text, t) {
+  // interpolate coral (#cc785c) -> amber (#e8a55a) by ratio t in [0,1]
+  const r = Math.round(204 + (232 - 204) * t);
+  const g = Math.round(120 + (165 - 120) * t);
+  const b = Math.round(92 + (90 - 92) * t);
+  return `\x1b[38;2;${r};${g};${b}m${text}${RESET}`;
+}
+
+const BANNER = String.raw`
+  ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗      ██╗     ███████╗███╗   ██╗███████╗
+ ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝      ██║     ██╔════╝████╗  ██║██╔════╝
+ ██║     ██║     ███████║██║   ██║██║  ██║█████╗  █████╗██║     █████╗  ██╔██╗ ██║███████╗
+ ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  ╚════╝██║     ██╔══╝  ██║╚██╗██║╚════██║
+ ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗      ███████╗███████╗██║ ╚████║███████║
+  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝      ╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝
+`;
+
+function banner() {
+  if (process.env.NO_COLOR || !process.stdout.isTTY) {
+    console.log("\n  claude-lens\n");
+    return;
+  }
+  const lines = BANNER.split("\n");
+  const visible = lines.filter((l) => l.trim().length > 0);
+  console.log("");
+  visible.forEach((line, i) => {
+    const t = visible.length > 1 ? i / (visible.length - 1) : 0;
+    console.log(gradientLine(line, t));
+  });
+  console.log(
+    DIM + "  See Claude clearly · 让 Claude 看得清楚" + RESET
+  );
+  console.log(
+    DIM + "  https://github.com/ViveSieg/claude-lens" + RESET
+  );
+  console.log("");
+}
+
+function box(title, lines) {
+  if (process.env.NO_COLOR || !process.stdout.isTTY) {
+    console.log("\n[" + title + "]");
+    lines.forEach((l) => console.log("  " + l));
+    return;
+  }
+  const w = Math.max(title.length, ...lines.map((l) => stripAnsi(l).length)) + 4;
+  console.log(
+    "\n" + CORAL + "┌─ " + BOLD + title + RESET + CORAL + " " +
+      "─".repeat(w - title.length - 4) + "┐" + RESET
+  );
+  for (const l of lines) {
+    const visibleLen = stripAnsi(l).length;
+    console.log(
+      CORAL + "│ " + RESET + l + " ".repeat(w - visibleLen - 3) + CORAL + "│" + RESET
+    );
+  }
+  console.log(CORAL + "└" + "─".repeat(w - 1) + "┘" + RESET + "\n");
+}
+
+function stripAnsi(s) {
+  return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function step(label) {
+  console.log(CORAL + "  ▸ " + RESET + label);
+}
+
+function ok(label) {
+  console.log(TEAL + "  ✓ " + RESET + label);
+}
+
 function die(msg, code = 1) {
-  console.error(msg);
+  console.error("\x1b[38;2;198;69;69m  ✗ " + msg + RESET);
   process.exit(code);
 }
 
@@ -51,6 +128,7 @@ const args = process.argv.slice(2);
 const sub = args[0];
 
 if (!sub || sub === "-h" || sub === "--help") {
+  banner();
   usage();
   process.exit(0);
 }
@@ -61,7 +139,23 @@ if (sub === "setup" || sub === "install") {
   if (!fs.existsSync(INSTALL_SH)) {
     die(`install.sh not found at ${INSTALL_SH}`);
   }
-  run("bash", [INSTALL_SH, ...args.slice(1)]);
+  banner();
+  step("Running install.sh ...");
+  const r = spawnSync("bash", [INSTALL_SH, ...args.slice(1)], {
+    stdio: "inherit",
+  });
+  if (r.status === 0) {
+    box("setup complete", [
+      "Next steps in any Claude Code session:",
+      "",
+      "  " + CORAL + "/lens on" + RESET + "        start mirror, register Stop hook, open Chrome",
+      "  " + CORAL + "/tutor init" + RESET + "     bind a NotebookLM notebook + scaffold CLAUDE.md",
+      "",
+      DIM + "Docs: https://github.com/ViveSieg/claude-lens" + RESET,
+    ]);
+    process.exit(0);
+  }
+  die("install.sh failed (exit code " + r.status + ")");
 }
 
 if (["start", "stop", "restart", "status", "open"].includes(sub)) {

@@ -193,6 +193,27 @@ async def push_input(payload: InputPayload) -> dict[str, Any]:
     return {"ok": True, "pipe": pipe_status}
 
 
+@app.post("/session/{session_id}/label")
+async def rename_session(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    label = str(payload.get("label", "")).strip()
+    if not label:
+        return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_") or "default"
+    if not session_file(safe).exists():
+        return JSONResponse({"ok": False, "error": "session not found"}, status_code=404)
+    meta = {
+        "session_id": safe,
+        "session_label": label,
+        "role": "system",
+        "content": f"_renamed at {time.strftime('%Y-%m-%d %H:%M:%S')}_",
+        "ts": time.time(),
+    }
+    append_session(safe, meta)
+    await hub.broadcast(safe, {"type": "label_changed", "label": label})
+    await hub.broadcast("__index__", {"type": "session_touch", "session": safe})
+    return {"ok": True, "label": label}
+
+
 @app.post("/session")
 async def create_session(payload: dict[str, Any]) -> dict[str, Any]:
     """Create an empty session file so it shows up in the sidebar before any push."""

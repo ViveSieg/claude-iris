@@ -210,10 +210,40 @@ function switchSession(id) {
   const url = new URL(location.href);
   url.searchParams.set("session", id);
   history.replaceState({}, "", url);
-  els.feedTitle.textContent = id;
+  els.feedTitle.textContent = friendlyTitle(id);
   loadHistory();
   loadSessions();
   reconnectWs();
+}
+
+function friendlyTitle(id) {
+  // Truncate long UUID-style ids gracefully.
+  if (id.length > 24) return id.slice(0, 8) + "…";
+  return id;
+}
+
+async function renameCurrentSession() {
+  const current = els.feedTitle.textContent;
+  const next = prompt("Rename this session:", current);
+  if (next == null) return;
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === current) return;
+  try {
+    const r = await fetch(`/session/${encodeURIComponent(currentSession)}/label`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: trimmed }),
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      alert("Rename failed: " + (data.error || "unknown error"));
+      return;
+    }
+    els.feedTitle.textContent = trimmed;
+    await loadSessions();
+  } catch (e) {
+    console.warn("rename failed", e);
+  }
 }
 
 // ---------- history ----------
@@ -224,13 +254,28 @@ async function loadHistory() {
   try {
     const r = await fetch(`/session/${currentSession}`);
     const data = await r.json();
+
+    // Find latest label across history.
+    let latestLabel = null;
+    if (data.messages) {
+      for (const m of data.messages) {
+        if (m.session_label) latestLabel = m.session_label;
+      }
+    }
+    els.feedTitle.textContent = latestLabel || friendlyTitle(currentSession);
+
     if (!data.messages || data.messages.length === 0) {
       showEmpty();
       els.feedMeta.textContent = "— no messages yet —";
       return;
     }
-    for (const m of data.messages) appendMessage(m, false);
-    els.feedMeta.textContent = `${data.messages.length} message${data.messages.length > 1 ? "s" : ""}`;
+    let shown = 0;
+    for (const m of data.messages) {
+      if (m.role === "system") continue; // hide internal meta records
+      appendMessage(m, false);
+      shown++;
+    }
+    els.feedMeta.textContent = `${shown} message${shown !== 1 ? "s" : ""}`;
     requestAnimationFrame(() => scrollBottom(true));
     rebuildToc();
   } catch (e) {
@@ -412,10 +457,13 @@ function connectWs() {
   ws.onmessage = (evt) => {
     const data = JSON.parse(evt.data);
     if (data.type === "message") {
-      appendMessage(data.message, true);
+      if (data.message.role !== "system") appendMessage(data.message, true);
       if (data.message.session_label) {
         els.feedTitle.textContent = data.message.session_label;
       }
+    } else if (data.type === "label_changed") {
+      els.feedTitle.textContent = data.label;
+      loadSessions();
     } else if (data.type === "ready") {
       // initial sync — server is ready
     }
@@ -475,7 +523,10 @@ els.btnScroll.addEventListener("click", () => scrollBottom(true));
 
 // ---------- boot ----------
 
-els.feedTitle.textContent = currentSession;
+els.feedTitle.textContent = friendlyTitle(currentSession);
+els.feedTitle.title = "Click to rename";
+els.feedTitle.style.cursor = "pointer";
+els.feedTitle.addEventListener("click", renameCurrentSession);
 loadSessions();
 loadHistory();
 connectWs();
