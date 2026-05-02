@@ -219,6 +219,14 @@ Stop hook 可能已从 `~/.claude/settings.json` 中移除。重新执行 `/iris
 
 ---
 
+## 设计层限制
+
+claude-iris 面向**单机单用户、单 Claude Code 终端**场景设计。以下三点是架构选择的直接结果，无法通过代码修复，使用前请先确认你的工作方式与之相容：
+
+- **listener 全局共用，不区分 session**：Cmd+V 注入由一个 `listen.py` 进程负责，按当前焦点终端（或 `CLAUDE_IRIS_FOCUS` 指定）粘贴。同时跑两个 Claude Code 终端时，浏览器输入仍只会进入 focus 终端，与 `session_id` 无关。
+- **`/push` 信任 localhost**：服务监听 `127.0.0.1` 且无鉴权，任何同机进程都可写入会话。在受信任的开发机以外不要把端口暴露到外网。
+- **`DATA_DIR` 同机独占**：默认 `~/.claude-iris/`，多个 Unix 用户共用同台机器时各自独立。同一用户跑多个 server 实例会冲突（PID 文件、FIFO、session jsonl 都共享）。
+
 ## 路线图
 
 - 流式增量消息渲染

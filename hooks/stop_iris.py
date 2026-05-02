@@ -16,7 +16,10 @@ import urllib.request
 from pathlib import Path
 
 ENDPOINT = os.environ.get("CLAUDE_IRIS_ENDPOINT", "http://127.0.0.1:7456/push")
-TIMEOUT = float(os.environ.get("CLAUDE_IRIS_TIMEOUT", "1.5"))
+# Claude Code blocks the prompt return until Stop hooks finish. Keep this
+# tight so a slow / dead iris server can't add noticeable latency between
+# turns — 0.8s is plenty for a healthy localhost POST.
+TIMEOUT = float(os.environ.get("CLAUDE_IRIS_TIMEOUT", "0.8"))
 
 
 def read_event() -> dict:

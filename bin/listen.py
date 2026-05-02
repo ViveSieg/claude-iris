@@ -10,6 +10,7 @@ down after grace when the last browser tab closes.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -31,6 +32,24 @@ def ensure_pipe() -> None:
 
 def _osascript_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _check_macos_accessibility() -> bool | None:
+    """True if Accessibility is granted, False if denied, None if uncheckable.
+
+    Without Accessibility, pbcopy still succeeds but the Cmd+V keystroke
+    silently no-ops — the most common "iris doesn't paste" symptom on a
+    fresh install. Surfacing this at startup saves the user a debugging
+    detour.
+    """
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+    except ImportError:
+        return None
+    try:
+        return bool(AXIsProcessTrusted())
+    except Exception:
+        return None
 
 
 def _quartz_paste_to_pid(pid: int) -> bool:
@@ -164,10 +183,18 @@ def banner(args: argparse.Namespace) -> None:
         print(f"  focus app:   {args.focus}")
     if SYSTEM == "Darwin" and args.inject:
         print()
-        print("  macOS Accessibility permission required for keystroke injection.")
-        print("  System Settings → Privacy & Security → Accessibility → enable")
-        print("  your terminal (Terminal.app or iTerm.app). First run usually")
-        print("  fails silently until permission is granted.")
+        ax = _check_macos_accessibility()
+        if ax is False:
+            print("  ⚠ Accessibility permission NOT granted — Cmd+V will silently")
+            print("    no-op. Open System Settings → Privacy & Security →")
+            print("    Accessibility, add and enable your terminal app, then")
+            print("    restart iris (`claude-iris restart`). pbcopy will succeed")
+            print("    in the meantime so you can manually paste.")
+        else:
+            # ax is True or None (uncheckable, e.g. PyObjC missing) — be neutral.
+            print("  macOS Accessibility permission required for keystroke injection.")
+            print("  System Settings → Privacy & Security → Accessibility → enable")
+            print("  your terminal (Terminal.app, iTerm.app, Ghostty.app, …).")
     print()
     if args.inject:
         print("  Focus your Claude Code terminal window. Browser messages will")
@@ -207,9 +234,25 @@ def main(argv: list[str] | None = None) -> int:
                     line = raw.rstrip("\n")
                     if not line:
                         continue
-                    print(f"  ▸ {line}")
+                    # Newer protocol: server writes one JSON object per line
+                    # carrying {session, text}. Older clients (or anything
+                    # writing the FIFO directly) get treated as plain text.
+                    session_id = None
+                    text = line
+                    if line.startswith("{"):
+                        try:
+                            payload = json.loads(line)
+                            if isinstance(payload, dict) and "text" in payload:
+                                session_id = payload.get("session")
+                                text = str(payload["text"])
+                        except json.JSONDecodeError:
+                            pass
+                    if session_id:
+                        print(f"  ▸ [{session_id}] {text}", flush=True)
+                    else:
+                        print(f"  ▸ {text}", flush=True)
                     if args.inject:
-                        inject(line, focus_app=args.focus)
+                        inject(text, focus_app=args.focus)
         except KeyboardInterrupt:
             print("\n[listen] stopped.")
             return 0

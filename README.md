@@ -286,6 +286,14 @@ in to Google. Re-run `/tutor init`.
 
 ---
 
+## Design limits
+
+claude-iris is built for **single-machine, single-user, one-Claude-terminal-at-a-time** workflows. The three constraints below are direct architectural choices, not bugs to file:
+
+- **The listener is global, not per-session.** A single `listen.py` types into whichever terminal is currently focused (or whatever `CLAUDE_IRIS_FOCUS` points at). If you have two Claude Code terminals running, browser input still goes only to the focused one — `session_id` doesn't route keystrokes.
+- **`/push` trusts localhost implicitly.** The server listens on `127.0.0.1` with no auth; any local process can write to any session. Don't expose port 7456 to the public internet on an untrusted box.
+- **`DATA_DIR` is owned by one user.** Defaults to `~/.claude-iris/`. Different OS users on the same machine each get their own dir, but running two iris servers under the same user collides on PID file, FIFO, and session jsonls.
+
 ## What's planned
 
 - Streaming partial-message rendering.

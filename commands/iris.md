@@ -82,7 +82,11 @@ Also report whether the Stop hook is currently registered in `~/.claude/settings
 
 ```bash
 ~/.claude/plugins/claude-iris/bin/claude-iris restart
+~/.claude/plugins/claude-iris/bin/claude-iris open
 ```
+
+After restart, also open the browser so the user lands on the freshly served
+page (picks up any new frontend assets, drops stale WS state).
 
 # Important
 

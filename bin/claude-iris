@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# claude-lens cli — start/stop the local mirror server.
+# claude-iris cli — start/stop the local mirror server.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="${REPO}/server/.venv"
 PY="${VENV}/bin/python"
-DATA_DIR="${CLAUDE_LENS_DATA:-${HOME}/.claude-lens}"
+DATA_DIR="${CLAUDE_IRIS_DATA:-${HOME}/.claude-iris}"
 PID_FILE="${DATA_DIR}/server.pid"
 LOG_FILE="${DATA_DIR}/server.log"
-PORT="${CLAUDE_LENS_PORT:-7456}"
-HOST="${CLAUDE_LENS_HOST:-127.0.0.1}"
+PORT="${CLAUDE_IRIS_PORT:-7456}"
+HOST="${CLAUDE_IRIS_HOST:-127.0.0.1}"
 
 mkdir -p "${DATA_DIR}"
 
 cmd_start() {
   if cmd_status_quiet; then
-    echo "claude-lens already running (pid $(cat "${PID_FILE}")) on http://${HOST}:${PORT}"
+    echo "claude-iris already running (pid $(cat "${PID_FILE}")) on http://${HOST}:${PORT}"
     return 0
   fi
   if [ ! -x "${PY}" ]; then
     echo "venv missing — run ${REPO}/install.sh first" >&2
     exit 1
   fi
-  echo "starting claude-lens on http://${HOST}:${PORT} ..."
-  CLAUDE_LENS_HOST="${HOST}" \
-  CLAUDE_LENS_PORT="${PORT}" \
-  CLAUDE_LENS_DATA="${DATA_DIR}" \
+  echo "starting claude-iris on http://${HOST}:${PORT} ..."
+  CLAUDE_IRIS_HOST="${HOST}" \
+  CLAUDE_IRIS_PORT="${PORT}" \
+  CLAUDE_IRIS_DATA="${DATA_DIR}" \
     nohup "${PY}" "${REPO}/server/main.py" >>"${LOG_FILE}" 2>&1 &
   echo $! > "${PID_FILE}"
   sleep 0.6
@@ -79,12 +79,57 @@ cmd_open() {
   local opened=0
   case "$(uname -s)" in
     Darwin)
-      # Prefer Google Chrome, then Chromium / Brave / Edge as fallbacks, finally default.
-      for app in "Google Chrome" "Chromium" "Brave Browser" "Microsoft Edge"; do
-        if [ -d "/Applications/${app}.app" ] || [ -d "${HOME}/Applications/${app}.app" ]; then
-          open -a "${app}" "${url}" && opened=1 && break
+      # If Chrome already has an iris tab open, jump to it instead of
+      # spawning a new one — `open -a "Google Chrome"` would otherwise
+      # add a duplicate every time the user runs /iris open.
+      if [ -d "/Applications/Google Chrome.app" ] || [ -d "${HOME}/Applications/Google Chrome.app" ]; then
+        if osascript <<APPLESCRIPT >/dev/null 2>&1
+on run argv
+  set theURL to "${url}"
+  tell application "Google Chrome"
+    set foundWindow to missing value
+    set foundIndex to 0
+    repeat with w in windows
+      set i to 0
+      repeat with t in tabs of w
+        set i to i + 1
+        if URL of t starts with theURL then
+          set foundWindow to w
+          set foundIndex to i
+          exit repeat
+        end if
+      end repeat
+      if foundWindow is not missing value then exit repeat
+    end repeat
+    if foundWindow is not missing value then
+      set active tab index of foundWindow to foundIndex
+      set index of foundWindow to 1
+      activate
+      return "reused"
+    else
+      open location theURL
+      activate
+      return "opened"
+    end if
+  end tell
+end run
+APPLESCRIPT
+        then
+          opened=1
+        else
+          # AppleScript path failed (Chrome not running, automation
+          # permission missing, etc) — fall back to plain open -a.
+          open -a "Google Chrome" "${url}" && opened=1
         fi
-      done
+      fi
+      # Other Chromium-family fallbacks if Chrome isn't installed.
+      if [ "${opened}" -eq 0 ]; then
+        for app in "Chromium" "Brave Browser" "Microsoft Edge"; do
+          if [ -d "/Applications/${app}.app" ] || [ -d "${HOME}/Applications/${app}.app" ]; then
+            open -a "${app}" "${url}" && opened=1 && break
+          fi
+        done
+      fi
       [ "${opened}" -eq 0 ] && open "${url}" && opened=1
       ;;
     Linux)
@@ -123,7 +168,7 @@ case "${1:-}" in
   open)    cmd_open ;;
   listen)  cmd_listen "$@" ;;
   *)
-    echo "usage: claude-lens {start|stop|restart|status|open|listen [--dry-run] [--focus APP]}"
+    echo "usage: claude-iris {start|stop|restart|status|open|listen [--dry-run] [--focus APP]}"
     exit 2
     ;;
 esac

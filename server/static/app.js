@@ -1,7 +1,18 @@
 /* claude-iris frontend */
 
 const params = new URLSearchParams(location.search);
-let currentSession = params.get("session") || "default";
+const explicitSession = params.get("session");
+let currentSession = explicitSession || "default";
+// Pin = "user has chosen this session, don't auto-jump to a newer one."
+// Pinned by: explicit ?session=, sidebar click, manual rename. Not pinned by
+// just typing in the input (because the reply lands on the same session).
+let pinnedSession = !!explicitSession;
+let indexWs = null;
+let wsHasConnectedOnce = false;
+// Paste-to-upload aliases — kept at module scope so resetPasteState (used
+// by switchSession defined further down) can clear them without hitting TDZ.
+let pasteCounter = 0;
+const pasteAliases = new Map(); // alias text → full path
 
 const els = {
   wsDot: document.getElementById("ws-dot"),
@@ -64,11 +75,25 @@ function renderMarkdown(container, src) {
   protectedSrc = protectedSrc.replace(/\[image:\s*([^\]]+)\]/g, (_, raw) => {
     imgN++;
     const path = raw.trim();
-    const filename = path.split("/").pop().replace(/[^A-Za-z0-9_.-]/g, "");
-    return ` <a href="/uploads/${filename}" target="_blank" rel="noopener" class="msg-img-link" title="${path}"><img src="/uploads/${filename}" alt="image${imgN}" class="msg-img" /></a> `;
+    // Drop any path segments first (defense-in-depth against `../`),
+    // then URL-encode so unicode filenames (e.g. `中文.png`) survive
+    // round-tripping. The /uploads endpoint already accepts unicode
+    // alphanumerics — stripping them client-side broke valid paths.
+    const filename = path.split("/").pop() || "";
+    const safe = encodeURIComponent(filename);
+    const titleAttr = path.replace(/"/g, "&quot;");
+    return ` <a href="/uploads/${safe}" target="_blank" rel="noopener" class="msg-img-link" title="${titleAttr}"><img src="/uploads/${safe}" alt="image${imgN}" class="msg-img" /></a> `;
   });
 
-  container.innerHTML = marked.parse(protectedSrc);
+  // Sanitize before injection: marked@12 doesn't strip HTML, and /push
+  // accepts content from any localhost process, so a hostile (or buggy)
+  // local writer could otherwise plant <script> in the feed. DOMPurify
+  // keeps inline formatting and our own image-link tags but drops
+  // script/iframe/event-handler attributes etc.
+  const html = marked.parse(protectedSrc);
+  container.innerHTML = (window.DOMPurify
+    ? DOMPurify.sanitize(html, { ADD_ATTR: ["target", "rel"] })
+    : html);
 
   // KaTeX
   if (window.renderMathInElement) {
@@ -86,6 +111,9 @@ function renderMarkdown(container, src) {
   }
 
   // Mermaid — use mermaid.render() (more reliable than mermaid.run() on dynamic DOM).
+  // Mermaid output bypasses the marked → DOMPurify sanitize above (it's
+  // injected later as raw SVG), so we sanitize the SVG separately under
+  // the SVG profile before assigning innerHTML.
   container.querySelectorAll(".mermaid-slot").forEach((slot) => {
     const idx = parseInt(slot.dataset.mid, 10);
     const code = mermaidBlocks[idx];
@@ -93,7 +121,9 @@ function renderMarkdown(container, src) {
     mermaid
       .render(renderId, code)
       .then(({ svg, bindFunctions }) => {
-        slot.innerHTML = svg;
+        slot.innerHTML = window.DOMPurify
+          ? DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } })
+          : svg;
         slot.classList.add("mermaid");
         if (bindFunctions) bindFunctions(slot);
       })
@@ -169,27 +199,67 @@ function renderSessionList(sessions) {
 }
 
 async function deleteSession(id) {
-  // (legacy name kept; works for both auto-created sessions and scratchpads)
-  if (!confirm(`Delete "${id}"? This removes its history file.`)) return;
+  if (!confirm(`Delete "${id}" entirely? The session disappears from the sidebar.`)) return;
   try {
     await fetch(`/session/${encodeURIComponent(id)}`, { method: "DELETE" });
     await loadSessions();
-    if (id === currentSession) switchSession("default");
+    if (id === currentSession) await jumpToNextSession();
   } catch (e) {
     console.warn("deleteSession failed", e);
   }
 }
 
-function switchSession(id) {
+async function jumpToNextSession() {
+  // After a true delete the page would otherwise be stuck on a session
+  // that no longer has a sidebar entry. Pick the next most-recent real
+  // session, or fall through to a clean empty state.
+  try {
+    const r = await fetch("/sessions");
+    const d = await r.json();
+    const sessions = (d.sessions || []).filter(s => s.id !== "default");
+    if (sessions.length) {
+      pinnedSession = false;  // let auto-follow take over again
+      switchSession(sessions[0].id, { pin: false });
+      return;
+    }
+  } catch (e) {
+    console.warn("jumpToNextSession failed", e);
+  }
+  currentSession = "default";
+  pinnedSession = false;
+  wsHasConnectedOnce = false;
+  els.feedTitle.textContent = friendlyTitle("default");
+  els.messages.innerHTML = "";
+  messageCache = [];
+  els.feedMeta.textContent = "— no messages yet —";
+  resetPasteState();
+  reconnectWs();
+}
+
+function switchSession(id, opts = {}) {
   if (id === currentSession) return;
   currentSession = id;
+  if (opts.pin !== false) pinnedSession = true;
   const url = new URL(location.href);
   url.searchParams.set("session", id);
   history.replaceState({}, "", url);
   els.feedTitle.textContent = friendlyTitle(id);
+  // Treat the new ws as a fresh connect (not a reconnect-with-gap), so
+  // its onopen doesn't redundantly call loadHistory after we already did.
+  wsHasConnectedOnce = false;
+  // Paste-state is per-session: aliases reference paths the *previous*
+  // session uploaded under, and counter [imageN] should restart from 1
+  // so the user sees a clean numbering each time.
+  resetPasteState();
   loadHistory();
   loadSessions();
   reconnectWs();
+}
+
+function resetPasteState() {
+  pasteCounter = 0;
+  pasteAliases.clear();
+  els.inputField.value = "";
 }
 
 function friendlyTitle(id) {
@@ -247,7 +317,7 @@ async function loadHistory() {
     }
     let shown = 0;
     for (const m of data.messages) {
-      if (m.role === "system") continue; // hide internal meta records
+      if (m.role === "system" || m.role === "_cleared") continue; // hide internal meta records
       appendMessage(m, false);
       shown++;
     }
@@ -429,6 +499,12 @@ function connectWs() {
     if (myWs !== ws) return;
     els.wsDot.className = "dot dot-ok";
     els.wsLabel.textContent = "connected";
+    if (wsHasConnectedOnce) {
+      // Reconnect (server restart, network blip, sleep/wake) — replay
+      // history in case any /push happened while we were disconnected.
+      loadHistory();
+    }
+    wsHasConnectedOnce = true;
   };
 
   myWs.onclose = () => {
@@ -454,6 +530,9 @@ function connectWs() {
     } else if (data.type === "label_changed") {
       els.feedTitle.textContent = data.label;
       loadSessions();
+    } else if (data.type === "reload") {
+      // backfill (or other server-side mutation) wants the feed re-rendered.
+      loadHistory();
     } else if (data.type === "ready") {
       // initial sync — server is ready
     }
@@ -465,14 +544,54 @@ function reconnectWs() {
   connectWs();
 }
 
+function connectIndexWs() {
+  // Subscribe to the broadcast-only __index__ channel so we learn when a
+  // brand-new Claude session pushes its first reply, and can hop to it
+  // automatically. Without this, opening a new Claude conversation while
+  // iris is already open leaves the page stuck on the old session.
+  if (indexWs) {
+    indexWs.onmessage = null;
+    indexWs.onclose = null;
+    try { indexWs.close(); } catch (_) {}
+  }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  indexWs = new WebSocket(`${proto}://${location.host}/ws/__index__`);
+  const myWs = indexWs;
+  myWs.onmessage = (evt) => {
+    if (myWs !== indexWs) return;
+    let data;
+    try { data = JSON.parse(evt.data); } catch (_) { return; }
+    if (data.type === "session_touch") {
+      const id = data.session;
+      if (!id || id === "default" || id === "__index__") return;
+      // Always refresh the sidebar so newly active sessions appear.
+      loadSessions();
+      // Auto-follow if the user hasn't pinned a session.
+      if (!pinnedSession && id !== currentSession) {
+        switchSession(id, { pin: false });
+      }
+    } else if (data.type === "session_removed") {
+      // Some other tab (or curl) hard-deleted a session. Refresh sidebar;
+      // jump out if we were viewing the one that just disappeared.
+      loadSessions();
+      if (data.session && data.session === currentSession) {
+        jumpToNextSession();
+      }
+    }
+  };
+  myWs.onclose = () => {
+    if (myWs !== indexWs) return;
+    setTimeout(connectIndexWs, 1500);
+  };
+}
+
 // ---------- input ----------
 
 // Paste-to-upload: paste an image → upload → insert a short `[imageN]`
 // alias in the input box for legibility. On Send, aliases get expanded
 // back to `[image: /full/path]` so the listener (and Claude Code on the
-// terminal side) still gets the resolvable path.
-let pasteCounter = 0;
-const pasteAliases = new Map(); // alias text → full path
+// terminal side) still gets the resolvable path. State declared at top
+// of the file alongside other module-level globals.
 
 function expandPasteAliases(text) {
   for (const [alias, path] of pasteAliases.entries()) {
@@ -527,6 +646,10 @@ els.inputForm.addEventListener("submit", async (e) => {
   const raw = els.inputField.value.trim();
   if (!raw) return;
   els.inputField.value = "";
+  // Typing into the input is an explicit engagement with this session —
+  // pin so a __index__ session_touch from another concurrent Claude
+  // session doesn't yank the page away mid-conversation.
+  pinnedSession = true;
   // Expand `[imageN]` aliases back to `[image: /full/path]` before sending
   // so the listener types a path the terminal-side Claude can resolve.
   const text = expandPasteAliases(raw);
@@ -555,7 +678,7 @@ els.inputForm.addEventListener("submit", async (e) => {
 
 els.btnClear.addEventListener("click", async () => {
   if (!confirm(`Clear all messages in "${currentSession}"?`)) return;
-  await fetch(`/session/${currentSession}`, { method: "DELETE" });
+  await fetch(`/session/${encodeURIComponent(currentSession)}/clear`, { method: "POST" });
   loadHistory();
   loadSessions();
 });
@@ -573,9 +696,37 @@ els.feedTitle.textContent = friendlyTitle(currentSession);
 els.feedTitle.title = "Click to rename";
 els.feedTitle.style.cursor = "pointer";
 els.feedTitle.addEventListener("click", renameCurrentSession);
-loadSessions();
-loadHistory();
-connectWs();
+
+async function pickInitialSession() {
+  // If the URL pinned a session, honor it. Otherwise switch to the most
+  // recently touched real session — without this, the page lands on the
+  // synthetic "default" session while the Stop hook pushes replies under
+  // Claude Code's actual session UUID, and the user sees nothing arrive.
+  if (explicitSession) {
+    loadSessions();
+    loadHistory();
+    connectWs();
+    connectIndexWs();
+    return;
+  }
+  try {
+    const r = await fetch("/sessions");
+    const d = await r.json();
+    const sessions = (d.sessions || []).filter(s => s.id !== "default");
+    if (sessions.length) {
+      currentSession = sessions[0].id;
+      els.feedTitle.textContent = sessions[0].label || friendlyTitle(currentSession);
+    }
+  } catch (e) {
+    console.error("pickInitialSession failed", e);
+  }
+  loadSessions();
+  loadHistory();
+  connectWs();
+  connectIndexWs();
+}
+
+pickInitialSession();
 
 // refresh sessions every 10s in case other terminals push to new sessions
 setInterval(loadSessions, 10000);

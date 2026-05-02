@@ -20,6 +20,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -38,6 +40,7 @@ PIPE_PATH = DATA_DIR / "input.pipe"
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 UPLOAD_TTL_DAYS = float(os.environ.get("CLAUDE_IRIS_UPLOAD_TTL_DAYS", "7"))
+SESSION_TTL_DAYS = float(os.environ.get("CLAUDE_IRIS_SESSION_TTL_DAYS", "30"))
 
 
 def _cleanup_uploads(ttl_days: float) -> None:
@@ -60,6 +63,28 @@ def _cleanup_uploads(ttl_days: float) -> None:
 
 
 _cleanup_uploads(UPLOAD_TTL_DAYS)
+
+
+def _cleanup_sessions(ttl_days: float) -> None:
+    """Delete session jsonls untouched for `ttl_days`. 0 disables.
+
+    Each new Claude conversation gets its own session file; without a TTL
+    the sidebar fills with months-old sessions the user no longer cares
+    about. Backfill from transcripts means a stale session can always be
+    rebuilt if needed — the file isn't load-bearing.
+    """
+    if ttl_days <= 0:
+        return
+    cutoff = time.time() - ttl_days * 86400
+    for p in SESSION_DIR.glob("*.jsonl"):
+        try:
+            if p.is_file() and p.stat().st_mtime < cutoff:
+                p.unlink()
+        except OSError:
+            pass
+
+
+_cleanup_sessions(SESSION_TTL_DAYS)
 
 
 def _kill_orphan_listeners() -> None:
@@ -94,7 +119,36 @@ def _kill_orphan_listeners() -> None:
 
 _kill_orphan_listeners()
 
-app = FastAPI(title="claude-iris")
+CLEANUP_INTERVAL_SEC = float(os.environ.get("CLAUDE_IRIS_CLEANUP_INTERVAL", "21600"))  # 6h
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Re-run upload + session TTL pruning every 6 hours.
+
+    Without this, a server that runs for weeks never trims old files
+    after the one-shot startup pass.
+    """
+    async def loop() -> None:
+        while True:
+            try:
+                await asyncio.sleep(CLEANUP_INTERVAL_SEC)
+            except asyncio.CancelledError:
+                return
+            try:
+                _cleanup_uploads(UPLOAD_TTL_DAYS)
+                _cleanup_sessions(SESSION_TTL_DAYS)
+            except Exception:
+                pass
+
+    task = asyncio.create_task(loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(title="claude-iris", lifespan=_lifespan)
 
 
 class PushPayload(BaseModel):
@@ -122,11 +176,18 @@ class Hub:
 
     async def leave(self, session_id: str, ws: WebSocket) -> None:
         async with self.lock:
-            self.clients[session_id].discard(ws)
+            s = self.clients.get(session_id)
+            if s is None:
+                return
+            s.discard(ws)
+            if not s:
+                # Drop the empty bucket so long-running servers don't
+                # accumulate one entry per session ever connected.
+                del self.clients[session_id]
 
     async def broadcast(self, session_id: str, message: dict[str, Any]) -> None:
         async with self.lock:
-            targets = list(self.clients[session_id])
+            targets = list(self.clients.get(session_id, ()))
         dead: list[WebSocket] = []
         for ws in targets:
             try:
@@ -260,6 +321,12 @@ CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 def find_claude_transcript(session_id: str) -> Path | None:
     if not session_id or session_id == "default":
         return None
+    # Real Claude Code session ids are UUIDs (alnum + hyphen). Anything else
+    # could carry glob metacharacters (`*`, `?`, `[`) that would silently
+    # match the wrong transcript — e.g. `session_id="*"` would return the
+    # most recently modified transcript across the entire projects dir.
+    if not all(c.isalnum() or c in "-_" for c in session_id):
+        return None
     if not CLAUDE_PROJECTS_DIR.exists():
         return None
     matches = list(CLAUDE_PROJECTS_DIR.glob(f"*/{session_id}.jsonl"))
@@ -268,16 +335,112 @@ def find_claude_transcript(session_id: str) -> Path | None:
     return max(matches, key=lambda p: p.stat().st_mtime)
 
 
-def custom_title_from_transcript(session_id: str) -> str | None:
-    """Return the latest /rename customTitle for a Claude Code session.
-
-    Records look like:
-        {"type": "custom-title", "customTitle": "...", "sessionId": "..."}
-    """
-    transcript = find_claude_transcript(session_id)
-    if not transcript:
+def _parse_iso_ts(ts_str: Any) -> float | None:
+    if not isinstance(ts_str, str) or not ts_str:
         return None
-    last_title: str | None = None
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+    except (ValueError, AttributeError):
+        return None
+
+
+_NOISE_USER_PREFIXES = (
+    "<command-name>",
+    "<command-message>",
+    "<local-command-stdout>",
+    "<local-command-caveat>",
+    "<system-reminder>",
+    "[Image #",
+)
+
+
+def _is_noise_user_text(text: str) -> bool:
+    """Filter Claude Code's wrapper user records out of the iris feed.
+
+    Slash-command invocations, command stdout caveats, and image-paste shims
+    all show up as `user` records but aren't real user dialogue — they'd
+    pollute the mirrored conversation. We keep records that contain real
+    text alongside a wrapper; only fully-synthetic ones are dropped.
+    """
+    stripped = text.lstrip()
+    if not stripped:
+        return True
+    return stripped.startswith(_NOISE_USER_PREFIXES)
+
+
+def _extract_user_text(rec: dict) -> str:
+    msg = rec.get("message", rec)
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        text = content.strip()
+        return "" if _is_noise_user_text(text) else text
+    if not isinstance(content, list):
+        return ""
+    chunks: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            chunks.append(block.get("text", ""))
+    text = "".join(chunks).strip()
+    return "" if _is_noise_user_text(text) else text
+
+
+def _extract_assistant_text(rec: dict) -> str:
+    msg = rec.get("message", rec)
+    content = msg.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ""
+    chunks: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            chunks.append(block.get("text", ""))
+    return "".join(chunks).strip()
+
+
+# Cached single-pass transcript walk: (mtime, size) → {"title": ..., "turns": [...]}.
+# Avoids re-reading the whole jsonl on every GET /session/{id} for sessions
+# with hundreds of turns, and replaces the previous pair of separate walks.
+_TRANSCRIPT_CACHE: dict[str, tuple[float, int, dict[str, Any]]] = {}
+
+
+def _read_transcript(transcript: Path) -> dict[str, Any]:
+    """Return {"title": str|None, "turns": [...]} from a Claude Code transcript.
+
+    Consecutive assistant records (split by tool_use/tool_result mid-turn) are
+    merged into a single assistant turn. Cached so repeated callers (backfill,
+    label resolution) don't each re-walk the file.
+    """
+    empty = {"title": None, "turns": []}
+    if not transcript.exists():
+        return empty
+    try:
+        stat = transcript.stat()
+    except OSError:
+        return empty
+    key = str(transcript)
+    cached = _TRANSCRIPT_CACHE.get(key)
+    if cached and cached[0] == stat.st_mtime and cached[1] == stat.st_size:
+        return cached[2]
+
+    title: str | None = None
+    turns: list[dict[str, Any]] = []
+    asst_chunks: list[str] = []
+    asst_ts: float | None = None
+
+    def flush_asst() -> None:
+        if asst_chunks:
+            turns.append(
+                {
+                    "role": "assistant",
+                    "content": "\n\n".join(asst_chunks).strip(),
+                    # ts stays None when source records had no timestamp;
+                    # backfill treats that as "older than any clear marker".
+                    "ts": asst_ts,
+                }
+            )
+
     try:
         with transcript.open(encoding="utf-8") as f:
             for line in f:
@@ -288,18 +451,119 @@ def custom_title_from_transcript(session_id: str) -> str | None:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if rec.get("type") == "custom-title":
+                rec_type = rec.get("type")
+                if rec_type == "custom-title":
                     t = rec.get("customTitle")
                     if t:
-                        last_title = t
+                        title = t
+                    continue
+                role = rec_type or rec.get("role")
+                ts = _parse_iso_ts(rec.get("timestamp"))
+                if role == "user":
+                    flush_asst()
+                    asst_chunks = []
+                    asst_ts = None
+                    text = _extract_user_text(rec)
+                    if text:
+                        turns.append({"role": "user", "content": text, "ts": ts})
+                elif role == "assistant":
+                    text = _extract_assistant_text(rec)
+                    if text:
+                        asst_chunks.append(text)
+                    if ts:
+                        asst_ts = ts
+        flush_asst()
     except OSError:
+        return empty
+
+    result = {"title": title, "turns": turns}
+    _TRANSCRIPT_CACHE[key] = (stat.st_mtime, stat.st_size, result)
+    return result
+
+
+async def backfill_session_from_transcript(session_id: str) -> int:
+    """Import any turns from the Claude Code transcript that aren't already in
+    our iris session file. Useful when /iris open is invoked after the terminal
+    has already exchanged messages — without this, the feed appears blank.
+
+    Dedup by (role, first 200 chars of content) so re-runs are idempotent.
+    Runs under the per-session write lock so concurrent /push from a Stop
+    hook can't interleave bytes inside a backfilled jsonl line.
+    """
+    transcript = find_claude_transcript(session_id)
+    if not transcript:
+        return 0
+    parsed = _read_transcript(transcript)  # cached by (mtime, size)
+    turns = parsed["turns"]
+    if not turns:
+        return 0
+    async with _write_lock(session_id):
+        existing = load_session(session_id)
+        cleared_ts = 0.0
+        seen: set[tuple[str, str]] = set()
+        for m in existing:
+            role = m.get("role")
+            if role == "_cleared":
+                cleared_ts = max(cleared_ts, float(m.get("ts") or 0))
+                continue
+            content = m.get("content", "")
+            if role in ("user", "assistant") and content:
+                seen.add((role, content.strip()[:200]))
+        label = parsed["title"]
+        appended = 0
+        for turn in turns:
+            # Don't re-import history the user explicitly cleared. Turns whose
+            # transcript timestamp predates (or equals) the latest clear marker
+            # stay out; only post-clear activity flows in.
+            if cleared_ts and float(turn.get("ts") or 0) <= cleared_ts:
+                continue
+            fp = (turn["role"], turn["content"][:200])
+            if fp in seen:
+                continue
+            seen.add(fp)
+            append_session(
+                session_id,
+                {
+                    "session_id": session_id,
+                    "session_label": label,
+                    "role": turn["role"],
+                    "content": turn["content"],
+                    "ts": turn["ts"],
+                },
+            )
+            appended += 1
+        return appended
+
+
+def custom_title_from_transcript(session_id: str) -> str | None:
+    """Latest /rename customTitle from Claude Code's transcript, if any."""
+    transcript = find_claude_transcript(session_id)
+    if not transcript:
         return None
-    return last_title
+    return _read_transcript(transcript)["title"]
+
+
+_session_write_locks: dict[str, asyncio.Lock] = {}
+
+
+def _write_lock(session_id: str) -> asyncio.Lock:
+    """One asyncio.Lock per session_id so concurrent /push and /input
+    don't interleave bytes inside a single jsonl line."""
+    lock = _session_write_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _session_write_locks[session_id] = lock
+    return lock
 
 
 def append_session(session_id: str, message: dict[str, Any]) -> None:
     with session_file(session_id).open("a", encoding="utf-8") as f:
         f.write(json.dumps(message, ensure_ascii=False) + "\n")
+
+
+async def append_session_locked(session_id: str, message: dict[str, Any]) -> None:
+    async with _write_lock(session_id):
+        append_session(session_id, message)
 
 
 def load_session(session_id: str) -> list[dict[str, Any]]:
@@ -316,12 +580,20 @@ def load_session(session_id: str) -> list[dict[str, Any]]:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
+    # Sort by timestamp so backfilled turns interleave correctly with whatever
+    # was already in the file (which was just append-order before).
+    out.sort(key=lambda m: m.get("ts") or 0)
     return out
 
 
 def list_sessions() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for f in sorted(SESSION_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
+        # Skip the synthetic "default" bucket: it's only created when someone
+        # types in iris's input box before any real Claude session has pushed,
+        # and shows up in the sidebar as confusing duplicate-with-no-replies.
+        if f.stem == "default":
+            continue
         last_label = ""
         try:
             with f.open(encoding="utf-8") as fh:
@@ -334,8 +606,6 @@ def list_sessions() -> list[dict[str, Any]]:
                         continue
         except OSError:
             continue
-        # Authoritative source: Claude Code's `/rename`. Falls back to any
-        # label we previously stored, then to the raw session id.
         label = custom_title_from_transcript(f.stem) or last_label or f.stem
         out.append(
             {
@@ -347,13 +617,51 @@ def list_sessions() -> list[dict[str, Any]]:
     return out
 
 
+def _latest_iris_label(session_id: str) -> str | None:
+    """Most recent non-null session_label persisted to the iris jsonl.
+
+    Captures both the iris-side `/session/{id}/label` rename and any prior
+    /push that already had a label. Used to keep an iris rename from being
+    silently clobbered by the next Stop-hook push (whose fallback is the
+    cwd basename, not the user's chosen name).
+    """
+    p = session_file(session_id)
+    if not p.exists():
+        return None
+    last: str | None = None
+    try:
+        with p.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                lbl = rec.get("session_label")
+                if lbl:
+                    last = lbl
+    except OSError:
+        return None
+    return last
+
+
 def _resolve_label(session_id: str, fallback: str | None) -> str | None:
-    """Always prefer the live `/rename` title from Claude Code's transcript
-    over what the client sent. Avoids the bug where Clear-ing the iris feed
-    loses the label and new messages show the raw UUID until the next push.
+    """Resolve the label for a /push or /input record.
+
+    Priority:
+      1. Claude Code `/rename` (authoritative — explicit user action in CC).
+      2. iris-side stored label (preserves iris's own rename and prior labels).
+      3. Caller's fallback (Stop hook derives this from cwd basename).
     """
     title = custom_title_from_transcript(session_id)
-    return title or fallback
+    if title:
+        return title
+    iris = _latest_iris_label(session_id)
+    if iris:
+        return iris
+    return fallback
 
 
 @app.post("/push")
@@ -365,7 +673,7 @@ async def push(payload: PushPayload) -> dict[str, Any]:
         "content": payload.content,
         "ts": payload.ts or time.time(),
     }
-    append_session(payload.session_id, msg)
+    await append_session_locked(payload.session_id, msg)
     await hub.broadcast(payload.session_id, {"type": "message", "message": msg})
     await hub.broadcast("__index__", {"type": "session_touch", "session": payload.session_id})
     return {"ok": True}
@@ -380,7 +688,7 @@ async def push_input(payload: InputPayload) -> dict[str, Any]:
         "content": payload.text,
         "ts": time.time(),
     }
-    append_session(payload.session_id, msg)
+    await append_session_locked(payload.session_id, msg)
     await hub.broadcast(payload.session_id, {"type": "message", "message": msg})
     await hub.broadcast("__index__", {"type": "session_touch", "session": payload.session_id})
 
@@ -393,11 +701,21 @@ async def push_input(payload: InputPayload) -> dict[str, Any]:
             return {"ok": True, "pipe": f"mkfifo failed: {e}"}
     try:
         fd = os.open(PIPE_PATH, os.O_WRONLY | os.O_NONBLOCK)
-        os.write(fd, (payload.text + "\n").encode("utf-8"))
+        # JSON-per-line so the listener can log the originating session
+        # alongside the text. Newlines inside `text` become \n inside the
+        # JSON string, so the framing stays intact.
+        line = json.dumps(
+            {"session": payload.session_id, "text": payload.text},
+            ensure_ascii=False,
+        ) + "\n"
+        os.write(fd, line.encode("utf-8"))
         os.close(fd)
         return {"ok": True, "pipe": "delivered"}
     except OSError:
         return {"ok": True, "pipe": "no consumer"}
+
+
+MAX_LABEL_LEN = 200
 
 
 @app.post("/session/{session_id}/label")
@@ -405,6 +723,11 @@ async def rename_session(session_id: str, payload: dict[str, Any]) -> dict[str, 
     label = str(payload.get("label", "")).strip()
     if not label:
         return JSONResponse({"ok": False, "error": "label required"}, status_code=400)
+    if len(label) > MAX_LABEL_LEN:
+        return JSONResponse(
+            {"ok": False, "error": f"label too long (max {MAX_LABEL_LEN})"},
+            status_code=400,
+        )
     safe = "".join(c for c in session_id if c.isalnum() or c in "-_") or "default"
     if not session_file(safe).exists():
         return JSONResponse({"ok": False, "error": "session not found"}, status_code=404)
@@ -415,7 +738,7 @@ async def rename_session(session_id: str, payload: dict[str, Any]) -> dict[str, 
         "content": f"_renamed at {time.strftime('%Y-%m-%d %H:%M:%S')}_",
         "ts": time.time(),
     }
-    append_session(safe, meta)
+    await append_session_locked(safe, meta)
     await hub.broadcast(safe, {"type": "label_changed", "label": label})
     await hub.broadcast("__index__", {"type": "session_touch", "session": safe})
     return {"ok": True, "label": label}
@@ -484,14 +807,54 @@ async def get_sessions() -> dict[str, Any]:
 
 @app.get("/session/{session_id}")
 async def get_session(session_id: str) -> dict[str, Any]:
-    return {"session_id": session_id, "messages": load_session(session_id)}
+    backfilled = await backfill_session_from_transcript(session_id)
+    messages = load_session(session_id)
+    if backfilled:
+        # Notify any open WS clients to refresh; cheaper than re-broadcasting
+        # every backfilled message individually.
+        await hub.broadcast(session_id, {"type": "reload"})
+        await hub.broadcast("__index__", {"type": "session_touch", "session": session_id})
+    return {"session_id": session_id, "messages": messages, "backfilled": backfilled}
+
+
+@app.post("/session/{session_id}/clear")
+async def clear_session(session_id: str) -> dict[str, Any]:
+    """Empty the feed but keep the session in the sidebar.
+
+    Writes a `_cleared` marker so backfill from Claude Code's transcript
+    won't immediately re-import the history we just hid. Stop-hook pushes
+    for new assistant turns still flow in normally.
+    """
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_") or "default"
+    p = session_file(safe)
+    marker = {
+        "session_id": safe,
+        "role": "_cleared",
+        "ts": time.time(),
+    }
+    async with _write_lock(safe):
+        if p.exists():
+            p.unlink()
+        with p.open("w", encoding="utf-8") as f:
+            f.write(json.dumps(marker, ensure_ascii=False) + "\n")
+    await hub.broadcast(safe, {"type": "reload"})
+    await hub.broadcast("__index__", {"type": "session_touch", "session": safe})
+    return {"ok": True}
 
 
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str) -> dict[str, Any]:
-    p = session_file(session_id)
-    if p.exists():
-        p.unlink()
+    """Permanently remove the session file. The sidebar drops it.
+
+    Use POST /session/{id}/clear instead if you want to keep the bucket
+    but empty its feed.
+    """
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_") or "default"
+    p = session_file(safe)
+    async with _write_lock(safe):
+        if p.exists():
+            p.unlink()
+    await hub.broadcast("__index__", {"type": "session_removed", "session": safe})
     return {"ok": True}
 
 
