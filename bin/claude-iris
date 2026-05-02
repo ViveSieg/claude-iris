@@ -2,6 +2,17 @@
 # claude-iris cli — start/stop the local mirror server.
 set -euo pipefail
 
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    echo "✗ claude-iris doesn't run natively on Windows — use WSL2." >&2
+    echo "  Quick start:" >&2
+    echo "    PowerShell (admin):  wsl --install -d Ubuntu" >&2
+    echo "    Ubuntu shell:        npm i -g claude-iris && claude-iris setup" >&2
+    echo "  Docs: https://github.com/ViveSieg/claude-iris#windows-via-wsl2" >&2
+    exit 1
+    ;;
+esac
+
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="${REPO}/server/.venv"
 PY="${VENV}/bin/python"
@@ -133,13 +144,32 @@ APPLESCRIPT
       [ "${opened}" -eq 0 ] && open "${url}" && opened=1
       ;;
     Linux)
-      for bin in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
-        if command -v "${bin}" >/dev/null 2>&1; then
-          "${bin}" "${url}" >/dev/null 2>&1 &
+      # WSL: vanilla Ubuntu has no Linux-side GUI browser. Hand the URL
+      # to the Windows host so it opens in the user's default Windows
+      # browser (typically Edge or Chrome) — without this, `claude-iris
+      # open` from inside WSL prints the URL and hopes the user clicks.
+      if [ -f /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
+        if command -v wslview >/dev/null 2>&1; then
+          wslview "${url}" >/dev/null 2>&1 && opened=1
+        elif command -v explorer.exe >/dev/null 2>&1; then
+          # explorer.exe with a URL hands off to the default Windows browser.
+          explorer.exe "${url}" >/dev/null 2>&1
+          # explorer.exe always exits 1 on URLs even when it succeeds; we
+          # can't rely on $? — assume it worked if the binary exists.
           opened=1
-          break
+        elif command -v cmd.exe >/dev/null 2>&1; then
+          cmd.exe /c start "" "${url}" >/dev/null 2>&1 && opened=1
         fi
-      done
+      fi
+      if [ "${opened}" -eq 0 ]; then
+        for bin in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+          if command -v "${bin}" >/dev/null 2>&1; then
+            "${bin}" "${url}" >/dev/null 2>&1 &
+            opened=1
+            break
+          fi
+        done
+      fi
       [ "${opened}" -eq 0 ] && command -v xdg-open >/dev/null 2>&1 && xdg-open "${url}" && opened=1
       ;;
     *)

@@ -15,10 +15,20 @@ if (process.env.CLAUDE_IRIS_SKIP_POSTINSTALL === "1") {
 }
 
 if (process.platform === "win32") {
-  console.log(
-    "[claude-iris] Windows is not directly supported — use WSL and run\n" +
-      "             `claude-iris setup` from inside the WSL shell."
-  );
+  console.log("");
+  console.log("[claude-iris] Native Windows isn't supported — please use WSL2.");
+  console.log("");
+  console.log("  One-time WSL setup (PowerShell as admin):");
+  console.log("    wsl --install -d Ubuntu");
+  console.log("");
+  console.log("  Then in the Ubuntu shell:");
+  console.log("    sudo apt update && sudo apt install -y nodejs npm python3-venv");
+  console.log("    npm i -g claude-iris && claude-iris setup");
+  console.log("");
+  console.log("  Inside WSL the mirror runs in read-only mode (browser shows");
+  console.log("  Claude replies; you type prompts directly in the terminal).");
+  console.log("  Docs: https://github.com/ViveSieg/claude-iris#windows-via-wsl2");
+  console.log("");
   process.exit(0);
 }
 

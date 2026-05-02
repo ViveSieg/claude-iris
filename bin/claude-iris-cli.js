@@ -53,7 +53,19 @@ function die(msg, code = 1) {
 
 function ensureBash() {
   if (process.platform === "win32") {
-    die("claude-iris currently requires macOS or Linux (or WSL on Windows).");
+    console.error("");
+    console.error("\x1b[38;2;198;69;69m  ✗ Native Windows isn't supported. Use WSL2.\x1b[0m");
+    console.error("");
+    console.error("    PowerShell (admin, one-time):");
+    console.error("      wsl --install -d Ubuntu");
+    console.error("");
+    console.error("    Ubuntu shell:");
+    console.error("      sudo apt install -y nodejs npm python3-venv");
+    console.error("      npm i -g claude-iris && claude-iris setup");
+    console.error("");
+    console.error("    Docs: https://github.com/ViveSieg/claude-iris#windows-via-wsl2");
+    console.error("");
+    process.exit(1);
   }
 }
 

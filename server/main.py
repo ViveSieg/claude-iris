@@ -265,6 +265,34 @@ LISTENER_LOG = DATA_DIR / "listen.log"
 LISTENER_GRACE_SEC = float(os.environ.get("CLAUDE_IRIS_LISTEN_GRACE", "30"))
 
 
+def _is_wsl() -> bool:
+    """True if running inside WSL on Windows.
+
+    WSL exposes a Linux kernel with `microsoft` baked into the version
+    string. We use this to fall back to read-only mode: server, Stop
+    hook, transcript poller, and broadcast all work, but the listener
+    can't reach Windows Terminal (xdotool only injects to X11 apps,
+    not native Win32 windows), so browser→terminal pasting is disabled.
+    """
+    if sys.platform != "linux":
+        return False
+    try:
+        with open("/proc/version", encoding="utf-8") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+READ_ONLY = _is_wsl() or os.environ.get("CLAUDE_IRIS_READ_ONLY") == "1"
+READ_ONLY_REASON = (
+    "Running under WSL — browser-to-terminal paste isn't available because "
+    "Windows Terminal isn't reachable from inside the WSL X11 server. "
+    "Reply mirroring still works fully."
+    if _is_wsl()
+    else "Read-only mode forced via CLAUDE_IRIS_READ_ONLY=1."
+)
+
+
 # TERM_PROGRAM is set by the terminal emulator on macOS. Map it to the .app
 # name AppleScript uses for `tell application "..." to activate`.
 _TERM_PROGRAM_TO_APP = {
@@ -303,6 +331,12 @@ class ListenerManager:
         return self.proc is not None and self.proc.poll() is None
 
     async def ensure_running(self) -> None:
+        # Read-only mode (WSL / forced) means we never spawn the keystroke
+        # injector. The Stop hook / poller / broadcast paths all still
+        # work — the page just shows replies without the input bar wired
+        # back to the terminal.
+        if READ_ONLY:
+            return
         async with self.lock:
             if self.stop_task and not self.stop_task.done():
                 self.stop_task.cancel()
@@ -765,6 +799,14 @@ async def push(payload: PushPayload) -> dict[str, Any]:
 
 @app.post("/input")
 async def push_input(payload: InputPayload) -> dict[str, Any]:
+    if READ_ONLY:
+        # No listener spawned — the message would be appended to the
+        # session jsonl but never typed into a terminal, which is a
+        # silent UX failure. Tell the frontend so it can disable the box.
+        return JSONResponse(
+            {"ok": False, "error": "read-only", "reason": READ_ONLY_REASON},
+            status_code=409,
+        )
     # /input is an explicit user action — typing here means "I want this
     # session active again." Lift any tombstone so future /push and the
     # poller stop ignoring this id.
@@ -982,7 +1024,12 @@ async def index() -> FileResponse:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "data_dir": str(DATA_DIR)}
+    return {
+        "ok": True,
+        "data_dir": str(DATA_DIR),
+        "read_only": READ_ONLY,
+        "read_only_reason": READ_ONLY_REASON if READ_ONLY else None,
+    }
 
 
 def main() -> None:

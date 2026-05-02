@@ -55,7 +55,59 @@ npm install -g claude-iris
 That's it. The package auto-runs its own setup so the slash commands work
 inside Claude Code immediately. No `claude-iris setup` needed.
 
-You'll need: macOS or Linux, Python 3.10+, Node 18+, and Claude Code.
+You'll need: macOS or Linux (or [WSL2 on Windows](#windows-via-wsl2)),
+Python 3.10+, Node 18+, and Claude Code. The installer pre-flights all of
+these and prints copy-paste apt / brew commands if any are missing.
+
+### <a id="windows-via-wsl2"></a> Windows — via WSL2
+
+Native Windows isn't supported. The keystroke-injection layer needs PyObjC
+(macOS) or xdotool (Linux), neither of which can drive Windows Terminal.
+**Install WSL2 instead**, which is also Anthropic's recommended path for
+Claude Code on Windows. The mirror server runs in WSL Linux; the browser
+opens on the Windows host. Inside WSL the page runs in **read-only mode**
+— assistant replies still stream live, but the input bar is hidden because
+typing back into the terminal from the page isn't possible across the
+WSL ↔ Windows boundary.
+
+**One-time WSL2 setup** (PowerShell as admin):
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+That installs WSL2 itself and Ubuntu **24.04 LTS** (the current default —
+recommended). Reboot if prompted. On Win11 with WSLg this also enables GUI
+forwarding automatically.
+
+> Why Ubuntu 24.04? It ships with Python 3.12, modern OpenSSL, and pre-built
+> wheels for everything in `requirements.txt`. Older images (20.04, Debian
+> bullseye) work too but you'll need to manually upgrade Python.
+
+**Then inside the Ubuntu shell**:
+
+```bash
+# 1. Tools claude-iris depends on (Ubuntu's nodejs is too old by default;
+#    use NodeSource for Node 20 LTS):
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt update
+sudo apt install -y nodejs python3 python3-venv python3-pip
+
+# 2. Claude Code (per Anthropic's official docs):
+npm install -g @anthropic-ai/claude-code
+
+# 3. claude-iris itself:
+npm install -g claude-iris
+```
+
+The post-install pre-flights `python3 / venv / node / npm`. If anything's
+missing it stops with the exact apt one-liner. From then on, every Claude
+Code session inside Ubuntu can use `/iris on`, `/tutor init`, and the rest
+exactly like on macOS — minus the input bar.
+
+**Tip:** put your project under `~/projects/...` *inside* WSL rather than
+on `/mnt/c/...`. WSL → Windows filesystem crossing is ~10× slower, and
+Claude Code's transcript poller will feel the lag.
 
 **What happens during install:** post-install creates a sandboxed Python venv
 inside the package directory and installs everything from `server/requirements.txt`
@@ -112,6 +164,39 @@ Inside any Claude Code session, type:
 This starts the local mirror server, opens a Chrome tab pointed at it,
 and registers a hook so every future reply auto-renders in the tab.
 Stop with `/iris off`.
+
+### Recommended layout
+
+The right layout depends on platform, because what iris can do at the
+terminal differs between macOS (full bidirectional, no focus flash) and
+WSL (read-only mirror).
+
+- **macOS — browser-only is fine, minimize the terminal.** Background
+  paste via Quartz `CGEventPostToPid` means the terminal never needs
+  focus — it doesn't even need to be visible. Open `/iris on`, minimize
+  your terminal, and live entirely in the iris tab: type prompts in the
+  input bar, read replies in the rendered feed. The terminal still exists
+  and Claude Code is still doing real work behind the scenes; you just
+  don't have to look at it.
+- **Windows + WSL — split-screen, browser LEFT, terminal RIGHT.** Under
+  WSL the iris page runs in read-only mode (input bar is hidden), so you
+  type prompts directly in the terminal. Side-by-side is the only sane
+  workflow there.
+  - Drag Chrome to the left edge until snap kicks in (or `Win + ←`), then
+    pick the right half for Windows Terminal from the snap layouts that
+    appear (or `Win + →` after focusing the terminal).
+  - Power user: split the WT pane itself (`Alt+Shift+D`) and run
+    `claude` on one side / a free shell on the other — both panes still
+    sit inside the right half of the screen.
+- **Linux native — your call.** Full bidirectional like macOS, so
+  browser-only is comfortable; or `Super` + `←/→` for half-screen if you
+  prefer eyes on both.
+- **Linux:** GNOME / KDE both honour `Super` + `←/→` for half-screen tile.
+
+The "↓ Bottom" button in the iris feed means you can scroll up and read
+older replies without losing track of the latest — new messages do **not**
+auto-scroll the feed (intentional UX choice so you don't get yanked away
+mid-paragraph).
 
 ### What you can do in the browser tab
 

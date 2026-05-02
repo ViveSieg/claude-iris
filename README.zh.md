@@ -49,7 +49,40 @@ npm install -g claude-iris
 
 安装包会自动执行初始化流程，slash 命令即时可用，无需手动运行 `claude-iris setup`。
 
-环境要求：macOS 或 Linux、Python 3.10+、Node 18+、Claude Code。
+环境要求：macOS 或 Linux（或 [Windows 通过 WSL2](#windows-通过-wsl2)）、Python 3.10+、Node 18+、Claude Code。安装脚本启动时会做依赖预检，缺什么都会直接打印对应平台的 apt / brew 安装命令。
+
+### <a id="windows-通过-wsl2"></a>Windows —— 通过 WSL2
+
+**原生 Windows 不支持。** 键盘注入层依赖 PyObjC（macOS）或 xdotool（Linux），二者均无法驱动 Windows Terminal。请改用 **WSL2**，这也是 Anthropic 官方为 Claude Code 推荐的 Windows 路径。镜像服务运行在 WSL Linux 内，浏览器在 Windows 宿主中打开。WSL 环境下浏览器页面进入 **只读模式**——助手回复正常实时显示，但页面输入框被隐藏（跨 WSL/Windows 边界无法可靠注入键盘事件到 Windows Terminal）。
+
+**一次性安装 WSL2**（PowerShell 管理员模式）：
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+这会同时安装 WSL2 内核和 **Ubuntu 24.04 LTS**（当前默认版本，推荐）。如系统提示请重启。Win11 + WSLg 会自动启用 GUI 转发。
+
+> **为什么推荐 Ubuntu 24.04？** 自带 Python 3.12、新版 OpenSSL，`requirements.txt` 里所有包都有预编译 wheel。老镜像（20.04、Debian bullseye）也能跑，但 Python 版本太老需手工升级。
+
+**进入 Ubuntu shell 后**：
+
+```bash
+# 1. claude-iris 的依赖（Ubuntu 自带的 nodejs 版本太老，从 NodeSource 装 Node 20 LTS）：
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt update
+sudo apt install -y nodejs python3 python3-venv python3-pip
+
+# 2. Claude Code（按 Anthropic 官方文档）：
+npm install -g @anthropic-ai/claude-code
+
+# 3. claude-iris：
+npm install -g claude-iris
+```
+
+post-install 脚本会预检 `python3 / venv / node / npm`，缺一不可——缺什么会停下来打印对应的 apt 一行命令。装完之后，Ubuntu 内的每一个 Claude Code 会话都可以正常用 `/iris on`、`/tutor init` 等命令，**唯一区别就是没有输入框**。
+
+> **小贴士**：项目代码放在 WSL 内的 `~/projects/...` 而**不要**放 `/mnt/c/...` 下。WSL 跨边界访问 Windows 文件系统慢约 10×，转录轮询会有明显延迟。
 
 **安装过程说明：** post-install 脚本会在 npm 包目录内创建一个**独立的 Python 虚拟环境**，并将 `server/requirements.txt` 中声明的依赖安装至该虚拟环境（包括 FastAPI、uvicorn，以及 macOS 平台所需的 PyObjC `Quartz` 与 `Cocoa` 用于背景粘贴）。**全程不修改用户的全局 Python 环境**。安装完成时，macOS 平台应输出 `>>> macOS background-paste ready (PyObjC Quartz + AppKit)`；若提示 `PyObjC import failed`，输出中将包含手动重装命令。
 
@@ -85,6 +118,18 @@ npm install -g claude-iris
 ```
 
 该命令同时完成三项操作：启动本地镜像服务、打开 Chrome 标签页、注册 Stop hook。其后所有回复将自动渲染至该标签页。停止服务请使用 `/iris off`。
+
+### 推荐布局
+
+不同平台的最佳布局不一样，因为 iris 在终端侧能做的事差距很大（macOS 全双向无焦点闪 vs WSL 只读镜像）。
+
+- **macOS —— 只开浏览器，终端最小化即可。** 因为 Quartz `CGEventPostToPid` 后台粘贴不需要终端在前台，**终端连可见都不需要**。`/iris on` 之后把终端窗口最小化（`Cmd+M`），整个工作流都在 iris 标签页里完成：输入框打 prompt，feed 里读富文本回复。终端进程仍在后台跑 Claude Code，只是你不需要再去看它。
+- **Windows + WSL —— 分屏，Chrome 在左，终端在右。** WSL 下 iris 页面是只读的（输入框被隐藏），所以 prompt 必须在终端里打，分屏是唯一合理的工作流。
+  - 拖 Chrome 到屏幕左边缘出现贴靠提示（或 `Win + ←`），系统会弹出贴靠布局，从中选择右半屏放 Windows Terminal（或先聚焦终端再 `Win + →`）。
+  - 进阶：在 Windows Terminal 内再用 `Alt+Shift+D` 横向切分 pane，左边跑 `claude`、右边留个空 shell —— 两个 pane 都在右半屏内。
+- **Linux 原生 —— 看个人偏好。** 与 macOS 同为全双向，也可以浏览器单屏；想两边一起看就 `Super + ←/→` 半屏贴靠。
+
+iris 页面里"↓ Bottom"按钮可以让你随时跳到最新一条 —— **新到的回复不会强制把你滚到底**（这是有意保留的：避免你在阅读上一段时被打断）。
 
 ### 浏览器端功能
 

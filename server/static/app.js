@@ -416,7 +416,10 @@ function appendMessage(msg, animate = true) {
       card.style.transition = "opacity 0.25s ease";
       card.style.opacity = "1";
     });
-    scrollBottom();
+    // No auto-scroll on incoming live messages — user wants to read at
+    // their own pace. The "↓ Bottom" button is still there for explicit
+    // jumps, and loadHistory/session-switch still scrolls to bottom on
+    // initial load (so a fresh page lands on the latest reply).
   }
 
   els.feedMeta.textContent = `${messageCache.length} message${messageCache.length > 1 ? "s" : ""}`;
@@ -706,6 +709,39 @@ els.feedTitle.textContent = friendlyTitle(currentSession);
 els.feedTitle.title = "Click to rename";
 els.feedTitle.style.cursor = "pointer";
 els.feedTitle.addEventListener("click", renameCurrentSession);
+
+async function applyReadOnlyIfNeeded() {
+  // When the server can't reach a terminal (e.g. WSL) the input bar is
+  // a trap — typing would silently drop. Hide it entirely + drop in a
+  // small banner explaining why, instead of leaving a non-functional
+  // text box that wastes the user's first interaction.
+  try {
+    const r = await fetch("/health");
+    const d = await r.json();
+    if (d && d.read_only) {
+      // Remove the input form from the DOM
+      if (els.inputForm && els.inputForm.parentNode) {
+        els.inputForm.parentNode.removeChild(els.inputForm);
+      }
+      // Drop a one-line read-only ribbon at the bottom of the feed area
+      const ribbon = document.createElement("div");
+      ribbon.className = "read-only-ribbon";
+      ribbon.style.cssText =
+        "padding: 12px 18px; border-top: 1px solid var(--rule, #e8e1d4); " +
+        "color: var(--muted, #6c6a64); font-size: 13px; " +
+        "background: var(--paper, #f5f0e8); text-align: center;";
+      ribbon.textContent =
+        "Read-only mirror · type prompts directly in your terminal";
+      ribbon.title = d.read_only_reason || "read-only";
+      const main = document.querySelector("main.feed") || document.body;
+      main.appendChild(ribbon);
+    }
+  } catch (e) {
+    // Server didn't answer /health — page will retry once it's back up.
+  }
+}
+
+applyReadOnlyIfNeeded();
 
 async function pickInitialSession() {
   // If the URL pinned a session, honor it. Otherwise switch to the most
