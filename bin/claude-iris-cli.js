@@ -11,50 +11,8 @@ const PKG_ROOT = path.resolve(__dirname, "..");
 const BASH_BIN = path.join(PKG_ROOT, "bin", "claude-iris");
 const INSTALL_SH = path.join(PKG_ROOT, "install.sh");
 
-const RESET = "\x1b[0m";
-const DIM = "\x1b[2m";
+const { print: banner, RESET, DIM, CORAL, TEAL } = require("./_banner");
 const BOLD = "\x1b[1m";
-const CORAL = "\x1b[38;2;204;120;92m";
-const AMBER = "\x1b[38;2;232;165;90m";
-const TEAL = "\x1b[38;2;93;184;166m";
-
-function gradientLine(text, t) {
-  // interpolate coral (#cc785c) -> amber (#e8a55a) by ratio t in [0,1]
-  const r = Math.round(204 + (232 - 204) * t);
-  const g = Math.round(120 + (165 - 120) * t);
-  const b = Math.round(92 + (90 - 92) * t);
-  return `\x1b[38;2;${r};${g};${b}m${text}${RESET}`;
-}
-
-const BANNER = String.raw`
-  ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗      ██╗     ███████╗███╗   ██╗███████╗
- ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝      ██║     ██╔════╝████╗  ██║██╔════╝
- ██║     ██║     ███████║██║   ██║██║  ██║█████╗  █████╗██║     █████╗  ██╔██╗ ██║███████╗
- ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  ╚════╝██║     ██╔══╝  ██║╚██╗██║╚════██║
- ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗      ███████╗███████╗██║ ╚████║███████║
-  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝      ╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝
-`;
-
-function banner() {
-  if (process.env.NO_COLOR || !process.stdout.isTTY) {
-    console.log("\n  claude-iris\n");
-    return;
-  }
-  const lines = BANNER.split("\n");
-  const visible = lines.filter((l) => l.trim().length > 0);
-  console.log("");
-  visible.forEach((line, i) => {
-    const t = visible.length > 1 ? i / (visible.length - 1) : 0;
-    console.log(gradientLine(line, t));
-  });
-  console.log(
-    DIM + "  See Claude clearly · 让 Claude 看得清楚" + RESET
-  );
-  console.log(
-    DIM + "  https://github.com/ViveSieg/claude-iris" + RESET
-  );
-  console.log("");
-}
 
 function box(title, lines) {
   if (process.env.NO_COLOR || !process.stdout.isTTY) {

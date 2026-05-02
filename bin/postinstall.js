@@ -33,15 +33,11 @@ if (!fs.existsSync(INSTALL_SH)) {
   process.exit(0);
 }
 
-const RESET = "\x1b[0m";
-const CORAL = "\x1b[38;2;204;120;92m";
-const TEAL = "\x1b[38;2;93;184;166m";
-const DIM = "\x1b[2m";
+const { print: banner, RESET, CORAL, TEAL, DIM } = require("./_banner");
 const tty = process.stdout.isTTY;
 const c = (col, s) => (tty ? col + s + RESET : s);
 
-console.log("");
-console.log(c(CORAL, "  claude-iris · post-install"));
+banner();
 console.log(c(DIM, "  Setting up venv + plugin symlink + slash commands..."));
 console.log("");
 
